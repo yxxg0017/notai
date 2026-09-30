@@ -42,7 +42,7 @@ export class NoteService {
    */
   async openOrCreate(
     source: SourceInfo,
-    opts: { headings?: NoteHeading[] } = {}
+    opts: { headings?: NoteHeading[]; titleOverride?: string } = {}
   ): Promise<{ notePath: string; created: boolean }> {
     const notePath = this.notePathFor(source);
     const headings = opts.headings ?? [];
@@ -56,7 +56,9 @@ export class NoteService {
     const now = new Date().toISOString();
     const sourceLink = this.sourceLinkFor(source);
     const frontmatter: Record<string, unknown> = {
-      title: this.titleFor(source),
+      // 标题输入值生效（controller 裁定 spec §7.2「输入标题 → 创建文件」）：
+      // titleOverride 非空写入 title，空字符串回退来源名；文件名仍由来源派生（一文档一笔记）
+      title: opts?.titleOverride?.trim() || this.titleFor(source),
       source: source.displayName,
       sourceType: source.sourceType,
       sourceLink,

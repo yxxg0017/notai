@@ -85,10 +85,18 @@ export function activate(context: vscode.ExtensionContext): void {
     selection: PdfSelection,
   ): Promise<void> => {
     const source = pdfSourceFor(selection);
-    if (action === 'note') {
-      await actions.addNote(selection.text, source);
-    } else {
-      await actions.addToWordBook(selection.text, source);
+    try {
+      if (action === 'note') {
+        await actions.addNote(selection.text, source);
+      } else {
+        await actions.addToWordBook(selection.text, source);
+      }
+    } catch (err) {
+      // 与 translate/explain 分支及编辑器路径一致：notesRoot 不可写等 FS 错误兜底为错误卡
+      const message = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(
+        `添加${action === 'note' ? '笔记' : '单词本'}失败: ${message}`,
+      );
     }
   };
   pdfProvider.setNoteActionHandler((action, selection) => {

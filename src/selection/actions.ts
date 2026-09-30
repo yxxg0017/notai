@@ -95,6 +95,8 @@ export class SelectionActions {
     }
     const { noteService } = this.deps;
     const { notePath } = await noteService.openOrCreate(source, {
+      // 输入框编辑值生效：写入 frontmatter title（空串/纯空白回退来源名；文件名仍由来源派生）
+      titleOverride: title,
       headings: [{ heading: '手动笔记', body: text }],
     });
     const doc = await vscode.window.showTextDocument(vscode.Uri.file(notePath), {

@@ -63,6 +63,22 @@ test('NoteService 首次创建含 frontmatter 与回链', async () => {
     assert.ok(text.includes('> 📎 原文引用（第 12 页）'));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+test('titleOverride 写入 frontmatter title，未传时回退来源名', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'notes-'));
+  try {
+    const svc = new NoteService(root);
+    const src = { displayName: 'pico.pdf', sourcePath: '/d/pico.pdf', sourceType: 'pdf' as const, page: 3 };
+    const { notePath } = await svc.openOrCreate(src, { titleOverride: '我的标题', headings: [] });
+    // 文件名仍为来源派生（一文档一笔记命名不变）
+    assert.ok(notePath.endsWith('pico.md'), `notePath 应仍由来源派生: ${notePath}`);
+    const text = readFileSync(notePath, 'utf8');
+    assert.ok(text.includes('title: 我的标题'));
+    // 未传 titleOverride 时回退来源名（其名去扩展名）
+    const src2 = { displayName: 'pico2.pdf', sourcePath: '/d/pico2.pdf', sourceType: 'pdf' as const, page: 4 };
+    const r2 = await svc.openOrCreate(src2, { headings: [] });
+    assert.ok(readFileSync(r2.notePath, 'utf8').includes('title: pico2'));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 test('WordBook 追加与解析', async () => {
   const root = mkdtempSync(join(tmpdir(), 'wb-'));
   try {
