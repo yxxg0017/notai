@@ -53,7 +53,11 @@ async function setupPdfWorker() {
     diag(`worker setup failed: ${msg}; pdf.js 将回退主线程渲染`);
   }
 }
-// 非阻塞：pdf.js 在 getDocument 时才读取 workerSrc；若此刻尚未就绪则回退主线程（原行为）
+// 先同步设置保底 workerSrc：openPdf 的 getDocument 可能在 blob 升级完成前触发，
+// 若留空会抛 "No GlobalWorkerOptions.workerSrc specified"（首次打开必现竞态）
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.mjs', MODULE_BASE).href;
+// 非阻塞升级为 blob: URL（绕过 vscode-resource 的 CORS/动态 import 限制，启用真 worker）；
+// 升级完成前 pdf.js 走主线程回退，同样可正确解析
 void setupPdfWorker();
 const C_MAP_URL = new URL('cmaps/', MODULE_BASE).href;
 
