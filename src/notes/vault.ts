@@ -5,17 +5,18 @@
 import * as path from 'node:path';
 
 /**
- * 来源文件 → 笔记路径：镜像来源目录 + 同名 `.md`。
- * 目录镜像规则（测试锁定）：来源目录去掉「根 + 第一个目录段」后平铺于 notesRoot 下，
- * 即首个目录段视为来源根标签、不参与镜像；无目录（根级文件）时平铺于 notesRoot 根。
+ * 来源文件 → 笔记路径：仅镜像来源「所在文件夹名」（路径最后一段）+ 同名 `.md`，
+ * 即 `notesRoot/<来源文件夹名>/<来源名>.md`（spec §7.1 示例：`Notes/后端agent开发资料/2-Agent八股2️⃣.md`）。
+ * 无所在文件夹（dirname 为根，如根级文件 `/2.pdf`）时平铺于 notesRoot 根，即 `notesRoot/<来源名>.md`。
  * `stem` 为空（如 `.pdf` 这类无主名文件）时回退为 `_note`。
  */
 export function notePathForSource(notesRoot: string, sourcePath: string): string {
   const dir = path.dirname(sourcePath);
   const stem = path.parse(sourcePath).name || '_note';
-  const parts = dir.split(path.sep).filter((p) => p.length > 0);
-  const rel = parts.slice(1).join(path.sep);
-  return path.join(notesRoot, rel, `${stem}.md`);
+  const folder = path.basename(dir);
+  return folder && folder !== '/'
+    ? path.join(notesRoot, folder, `${stem}.md`)
+    : path.join(notesRoot, `${stem}.md`);
 }
 
 /**

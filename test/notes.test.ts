@@ -24,8 +24,8 @@ test('无 frontmatter 时返回空 data', () => {
   assert.deepStrictEqual(data, {});
   assert.strictEqual(body, '# 纯正文');
 });
-test('notePathForSource 镜像目录且同名 .md', () => {
-  assert.strictEqual(notePathForSource('/n', '/docs/a/b/2-Agent八股2️⃣.pdf'), '/n/a/b/2-Agent八股2️⃣.md');
+test('notePathForSource 镜像来源文件夹名且同名 .md', () => {
+  assert.strictEqual(notePathForSource('/n', '/docs/a/b/2-Agent八股2️⃣.pdf'), '/n/b/2-Agent八股2️⃣.md');
   assert.strictEqual(notePathForSource('/n', '/2.pdf'), '/n/2.md');
 });
 test('isInsideVault 拒绝路径穿越与外部绝对路径', () => {
