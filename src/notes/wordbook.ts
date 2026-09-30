@@ -4,6 +4,7 @@
  */
 import * as fs from 'node:fs';
 import { join } from 'node:path';
+import { isInsideVault } from './vault';
 
 export interface WordEntry {
   word: string;
@@ -25,6 +26,10 @@ export class WordBook {
   /** 追加一条词条；文件不存在时先创建 `# 单词本` 头。空字段省略。 */
   async addEntry(e: WordEntry): Promise<void> {
     const p = this.path();
+    // 第二道白名单防线：写入前校验（Global Constraint）
+    if (!isInsideVault(this.notesRoot, p)) {
+      throw new Error(`单词本路径逃逸笔记库: ${p}`);
+    }
     if (!fs.existsSync(p)) {
       await fs.promises.mkdir(this.notesRoot, { recursive: true });
       await fs.promises.writeFile(p, '# 单词本\n', 'utf8');

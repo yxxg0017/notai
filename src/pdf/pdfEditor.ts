@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import { classifyPageText, clampPage, pageStateKey } from './helpers';
+import { classifyPageText, clampPage, pageStateKey, pageFromFragment } from './helpers';
 
 /** 当前 PDF 选区（text 为空串表示已清空） */
 export interface PdfSelection {
@@ -126,6 +126,8 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
     _token: vscode.CancellationToken,
   ): Promise<void> {
     const uri = document.uri;
+    // 位置记忆键统一去掉 fragment：回链 `vscode://file/...#page=N` 与正常打开必须命中同一键
+    const uriKey = uri.with({ fragment: '' }).toString();
 
     // 记录面板（broadcastToPdf 用）
     let panels = this.panelsByUri.get(uri.toString());
@@ -139,11 +141,19 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
       if (panels.size === 0) {
         this.panelsByUri.delete(uri.toString());
       }
+      // 全部 PDF 面板关闭后清空当前选区，避免「编辑器命令 + 陈旧 PDF 选区」误用
+      if (!this.anyPanelOpen()) {
+        this.currentSelection = undefined;
+      }
     });
 
-    // ---- 1. 阅读位置：读上次页码作为 initialPage（1..∞ 夹取，具体页数由 viewer 二次夹取）----
-    const savedPage = this.context.workspaceState.get<number>(pageStateKey(uri.toString()));
-    const initialPage = clampPage(savedPage ?? 1, Number.MAX_SAFE_INTEGER);
+    // ---- 1. 阅读位置：回链 #page=N 优先（clamp 后）；否则读上次页码（键已去 fragment）----
+    const savedPage = this.context.workspaceState.get<number>(pageStateKey(uriKey));
+    const fragmentPage = pageFromFragment(uri.fragment);
+    const initialPage = clampPage(
+      fragmentPage !== undefined ? fragmentPage : (savedPage ?? 1),
+      Number.MAX_SAFE_INTEGER,
+    );
 
     // ---- 2. webview 资源根：viewer 静态资源 + PDF 所在目录（fetch 文件本身需要）----
     const localResourceRoots: vscode.Uri[] = [
@@ -160,10 +170,10 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
     );
     panel.onDidDispose(() => messageDisposable.dispose());
 
-    // ---- 4. 阅读位置：面板关闭时回写 workspaceState（页码变化时已即时回写）----
+    // ---- 4. 阅读位置：面板关闭时回写 workspaceState（页码变化时已即时回写；键去 fragment）----
     panel.onDidDispose(() => {
-      const lastPage = this.lastPageByUri.get(uri.toString()) ?? initialPage;
-      void this.context.workspaceState.update(pageStateKey(uri.toString()), lastPage);
+      const lastPage = this.lastPageByUri.get(uriKey) ?? initialPage;
+      void this.context.workspaceState.update(pageStateKey(uriKey), lastPage);
       this.output.appendLine(`[pdf] closed ${uri.fsPath} @ page ${lastPage}`);
     });
 
@@ -202,6 +212,16 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
   public dispose(): void {
     this.onDidChangeSelection.dispose();
     this.output.dispose();
+  }
+
+  /** 是否仍有任一已打开的 PDF 面板（全部关闭时用于清空 currentSelection） */
+  private anyPanelOpen(): boolean {
+    for (const panels of this.panelsByUri.values()) {
+      if (panels.size > 0) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private handleViewerMessage(
@@ -271,8 +291,10 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
       }
       case 'page-change': {
         const page = Math.max(1, message.page ?? 1);
-        this.lastPageByUri.set(uri, page);
-        void this.context.workspaceState.update(pageStateKey(uri), page);
+        // 与读取处一致：键去掉 fragment（回链 #page=N 打开后翻页仍写回同一键）
+        const key = document.uri.with({ fragment: '' }).toString();
+        this.lastPageByUri.set(key, page);
+        void this.context.workspaceState.update(pageStateKey(key), page);
         break;
       }
       case 'pdf:error': {

@@ -5,7 +5,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseFrontmatter, stringifyFrontmatter } from './frontmatter';
-import { notePathForSource } from './vault';
+import { notePathForSource, isInsideVault } from './vault';
 
 export interface SourceInfo {
   displayName: string;
@@ -45,6 +45,10 @@ export class NoteService {
     opts: { headings?: NoteHeading[]; titleOverride?: string } = {}
   ): Promise<{ notePath: string; created: boolean }> {
     const notePath = this.notePathFor(source);
+    // 第二道白名单防线：写路径前必须通过 isInsideVault（vault.ts 已对退化目录名兜底，此处防御性断言）
+    if (!isInsideVault(this.notesRoot, notePath)) {
+      throw new Error(`笔记路径逃逸笔记库: ${notePath}`);
+    }
     const headings = opts.headings ?? [];
     if (fs.existsSync(notePath)) {
       if (headings.length > 0) {
@@ -79,6 +83,10 @@ export class NoteService {
 
   /** 追加每个 heading 的 `## 标题 + 正文` 块，并回写更新的 `updated` 时间戳 */
   async appendTo(notePath: string, headings: NoteHeading[]): Promise<void> {
+    // 第二道白名单防线：写入前校验（openOrCreate 内部调用会重复校验，成本可忽略）
+    if (!isInsideVault(this.notesRoot, notePath)) {
+      throw new Error(`笔记路径逃逸笔记库: ${notePath}`);
+    }
     const block = headings.map((h) => `\n\n## ${h.heading}\n\n${h.body}\n`).join('');
     const text = await fs.promises.readFile(notePath, 'utf8');
     const { data, body } = parseFrontmatter(text);

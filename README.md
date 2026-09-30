@@ -11,7 +11,7 @@
 
 ```bash
 npm install        # 安装依赖
-npm run check      # 编译 + 单测（35 个用例）
+npm run check      # 编译 + 单测（38 个用例）
 npm run package    # 产出 ai-study-helper-0.1.0.vsix
 code --install-extension ai-study-helper-0.1.0.vsix
 ```
@@ -65,6 +65,8 @@ code --install-extension ai-study-helper-0.1.0.vsix
 2. **扫描版 PDF 需手动笔记**：无文字层的扫描页无法划词（不做 OCR），页内提供「手动添加笔记」入口，按页码生成笔记而不携带原文引用。
 3. **无源场景**：Harness 对话等无来源的笔记入口（`sourceType: none`）在计划 2 实现。
 4. **多面板选区**：PDF 阅读器同时打开多个文件时，划词来源取最近一次选区（既有全局选区语义）。
+5. **来源同名文件夹碰撞**：笔记按来源「所在文件夹名」镜像（一文档一笔记），不同根下的同名文件夹会共享同一笔记文件，如 `/a/docs/x.pdf` 与 `/b/docs/x.pdf` 均映射到 `<notesRoot>/docs/x.md`（两份来源续写同一份笔记；spec §7.1 的镜像规则如此设计，已知限制）。
+6. **取源优先级**：编辑器命令（翻译/解释/复制/添加笔记/添加单词本）在编辑器存在**非空选区**时优先取编辑器选区（`sourceType: editor`），其次才取当前 PDF 选区；即编辑器非空选区优先于 PDF 当前选区。
 
 ## 开发
 

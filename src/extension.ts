@@ -268,10 +268,11 @@ export function activate(context: vscode.ExtensionContext): void {
         password: true,
         prompt: '输入 DeepSeek API Key',
       });
-      if (!apiKey) {
+      if (!apiKey || !apiKey.trim()) {
+        // 空白输入视为取消（提示语不变）
         return;
       }
-      await new SecretStore(context.secrets).setApiKey(apiKey);
+      await new SecretStore(context.secrets).setApiKey(apiKey.trim());
       void vscode.window.showInformationMessage('API Key 已保存');
     })
   );

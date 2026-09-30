@@ -28,6 +28,16 @@ test('notePathForSource 镜像来源文件夹名且同名 .md', () => {
   assert.strictEqual(notePathForSource('/n', '/docs/a/b/2-Agent八股2️⃣.pdf'), '/n/b/2-Agent八股2️⃣.md');
   assert.strictEqual(notePathForSource('/n', '/2.pdf'), '/n/2.md');
 });
+test('notePathForSource 来源含 .. 段时回退平铺且不逃逸', () => {
+  // 来源含 `..`（dirname 退化为 ..）→ 降级为平铺，不允许 join(notesRoot,'..',...) 逃逸
+  const p = notePathForSource('/n', '/n/../x.pdf');
+  assert.strictEqual(p, '/n/x.md');
+  assert.strictEqual(isInsideVault('/n', p), true);
+  // `.` 段同理
+  const p2 = notePathForSource('/n', '/n/./x.pdf');
+  assert.strictEqual(p2, '/n/x.md');
+  assert.strictEqual(isInsideVault('/n', p2), true);
+});
 test('isInsideVault 拒绝路径穿越与外部绝对路径', () => {
   assert.ok(isInsideVault('/n', '/n/子/笔记.md'));
   assert.ok(!isInsideVault('/n', '/n/../etc/passwd'));
