@@ -27,7 +27,34 @@ window.addEventListener('unhandledrejection', (e) => {
 
 /* ---------------- pdf.js 运行时配置（相对本模块的 asWebviewUri 解析） ---------------- */
 const MODULE_BASE = new URL('.', import.meta.url);
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.mjs', MODULE_BASE).href;
+
+/**
+ * 以 blob: URL 方式加载 PDF.js worker。
+ * webview 中直接 new Worker(module URL) / import(workerSrc) 会因
+ * vscode-resource 的 CORS 与动态 import 限制失败（日志出现
+ * "Failed to fetch dynamically imported module: ...pdf.worker.min.mjs"），
+ * 导致 pdf.js 回退主线程渲染（慢）。blob: 与 webview 同源，且满足
+ * CSP worker-src blob:，可正常创建 worker。
+ */
+async function setupPdfWorker() {
+  try {
+    const workerModuleUrl = new URL('pdf.worker.min.mjs', MODULE_BASE).href;
+    const resp = await fetch(workerModuleUrl);
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    const blobUrl = URL.createObjectURL(
+      new Blob([await resp.text()], { type: 'text/javascript' }),
+    );
+    pdfjsLib.GlobalWorkerOptions.workerSrc = blobUrl;
+    diag('worker: blob url ready');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    diag(`worker setup failed: ${msg}; pdf.js 将回退主线程渲染`);
+  }
+}
+// 非阻塞：pdf.js 在 getDocument 时才读取 workerSrc；若此刻尚未就绪则回退主线程（原行为）
+void setupPdfWorker();
 const C_MAP_URL = new URL('cmaps/', MODULE_BASE).href;
 
 /* ---------------- 状态 ---------------- */
