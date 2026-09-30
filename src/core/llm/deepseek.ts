@@ -21,7 +21,7 @@ import type {
  * - 非 `data: ` 行、`[DONE]`、空行、JSON 解析失败、无 choices → 返回 null
  * - 透出 `delta.content`（text）、`delta.reasoning_content`（reasoning）、
  *   `delta.tool_calls[0]`（index/id/name/arguments 增量）
- * - `finish_reason` 存在时设置 `finish: true`
+ * - `finish_reason` 存在时设置 `finish: true` 与 `finishReason`（原始值透传）
  */
 export function parseSseChunk(
   line: string
@@ -35,6 +35,7 @@ export function parseSseChunk(
     argumentsDelta?: string;
   };
   finish?: boolean;
+  finishReason?: string;
 } | null {
   if (!line.startsWith('data: ')) return null;
   const payload = line.slice('data: '.length);
@@ -54,6 +55,7 @@ export function parseSseChunk(
     reasoning?: string;
     toolCall?: { index: number; id?: string; name?: string; argumentsDelta?: string };
     finish?: boolean;
+    finishReason?: string;
   } = {};
 
   const delta = choice.delta ?? {};
@@ -73,7 +75,10 @@ export function parseSseChunk(
     if (typeof tc.function?.arguments === 'string') toolCall.argumentsDelta = tc.function.arguments;
     out.toolCall = toolCall;
   }
-  if (choice.finish_reason != null) out.finish = true;
+  if (choice.finish_reason != null) {
+    out.finish = true;
+    if (typeof choice.finish_reason === 'string') out.finishReason = choice.finish_reason;
+  }
 
   return out;
 }
@@ -89,11 +94,11 @@ export function mapHttpError(status: number, body: string): LLMError {
   if (status === 400 && /context\s*length|maximum\s*context/i.test(body)) {
     return new LLMError('contextLength', '上下文长度超出模型限制（HTTP 400）', false);
   }
-  // 其余 5xx 与非成功状态：视为网络/服务端错误；5xx 可重试
+  // 全局约束：retryable 仅 rateLimit 为 true —— 其余 5xx/网络错误一律不可自动重试
   return new LLMError(
     'network',
     `请求失败（HTTP ${status}）${body ? `：${body.slice(0, 200)}` : ''}`,
-    status >= 500
+    false
   );
 }
 
@@ -146,10 +151,11 @@ export class DeepSeekProvider implements LLMProvider {
       if (err instanceof Error && err.name === 'AbortError') {
         throw new LLMError('network', '请求已取消（AbortError）', false);
       }
+      // 全局约束：retryable 仅 rateLimit 为 true —— 网络错误不可自动重试
       throw new LLMError(
         'network',
         `网络错误：${err instanceof Error ? err.message : String(err)}`,
-        true
+        false
       );
     }
 
@@ -164,7 +170,7 @@ export class DeepSeekProvider implements LLMProvider {
     let content = '';
     let reasoning = '';
     const toolAccums = new Map<number, ToolCallAccum>();
-    let finished = false;
+    let finishReason: string | undefined;
 
     const handleLine = (line: string) => {
       const parsed = parseSseChunk(line);
@@ -193,33 +199,46 @@ export class DeepSeekProvider implements LLMProvider {
         if (tc.argumentsDelta !== undefined) acc.arguments += tc.argumentsDelta;
         toolAccums.set(tc.index, acc);
       }
-      if (parsed.finish) finished = true;
+      if (parsed.finishReason !== undefined) finishReason = parsed.finishReason;
     };
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
     try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        // stream: true —— 跨 chunk 的 UTF-8 多字节字符由 decoder 保序拼接
-        buffer += decoder.decode(value, { stream: true });
-        for (let idx = buffer.indexOf('\n'); idx >= 0; idx = buffer.indexOf('\n')) {
-          const line = buffer.slice(0, idx).replace(/\r$/, '');
-          buffer = buffer.slice(idx + 1);
-          handleLine(line);
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          // stream: true —— 跨 chunk 的 UTF-8 多字节字符由 decoder 保序拼接
+          buffer += decoder.decode(value, { stream: true });
+          for (let idx = buffer.indexOf('\n'); idx >= 0; idx = buffer.indexOf('\n')) {
+            const line = buffer.slice(0, idx).replace(/\r$/, '');
+            buffer = buffer.slice(idx + 1);
+            handleLine(line);
+          }
         }
+        // 最后一个 chunk 可能没有结尾换行
+        if (buffer.length > 0) handleLine(buffer.replace(/\r$/, ''));
+      } catch (err) {
+        // 流中段错误（如响应头之后触发 abort、连接中断）：映射为统一的网络错误，
+        // 不再把 DOMException/TypeError 裸抛给调用方；retryable 仅 rateLimit 为 true。
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw new LLMError('network', '流式读取已取消（AbortError）', false);
+        }
+        throw new LLMError(
+          'network',
+          `流式读取错误：${err instanceof Error ? err.message : String(err)}`,
+          false
+        );
       }
-      // 最后一个 chunk 可能没有结尾换行
-      if (buffer.length > 0) handleLine(buffer.replace(/\r$/, ''));
     } finally {
       reader.releaseLock();
     }
 
     const msg: AssistantMessage = { content };
     if (reasoning.length > 0) msg.reasoning = reasoning;
-    if (finished && toolAccums.size > 0) {
+    if (finishReason === 'tool_calls' && toolAccums.size > 0) {
       const toolCalls: ToolCall[] = [...toolAccums.entries()]
         .sort((a, b) => a[0] - b[0])
         .map(([, acc]) => ({ id: acc.id, name: acc.name, arguments: acc.arguments }));

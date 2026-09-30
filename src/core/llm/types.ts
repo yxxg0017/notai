@@ -71,7 +71,7 @@ export type LLMErrorKind =
 
 export class LLMError extends Error {
   readonly kind: LLMErrorKind;
-  /** 是否可安全重试（仅限流与网络/服务端错误为 true） */
+  /** 是否可安全重试（全局约束：仅 rateLimit 为 true） */
   readonly retryable: boolean;
 
   constructor(kind: LLMErrorKind, message: string, retryable = false) {
