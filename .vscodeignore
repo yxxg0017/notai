@@ -3,6 +3,7 @@
 .vscode/**
 .vscode-test/**
 .superpowers/**
+.worktrees/**
 docs/**
 node_modules/**
 out-test/**
