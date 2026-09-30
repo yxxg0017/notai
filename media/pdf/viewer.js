@@ -116,6 +116,8 @@ async function openPdf(config) {
 
 async function renderAllPages(doc, targetPage) {
   const token = ++state.renderToken;
+  // 清空旧页面：setZoom / 适配宽度 resize 会重复调用本函数，避免 DOM 累积重复页
+  pagesEl.textContent = '';
   const wraps = [];
   for (let i = 1; i <= doc.numPages; i += 1) {
     const wrap = document.createElement('div');
