@@ -53,14 +53,14 @@
 
 - [ ] **Step 2: 编写 copy-pdf-assets.js 与 .gitignore**
 
-`scripts/copy-pdf-assets.js`：从 `node_modules/pdfjs-dist` 复制 `build/pdf.min.mjs`、`build/pdf.worker.min.mjs`、`cmaps/` 到 `media/pdf/`（幂等，`fs.cp` 递归）。`.gitignore`：`node_modules/`、`out/`、`out-test/`、`*.vsix`、`media/pdf/`。
+`scripts/copy-pdf-assets.js`：从 `node_modules/pdfjs-dist` 复制 `build/pdf.min.mjs`、`build/pdf.worker.min.mjs`、`cmaps/` 到 `media/pdf/`（幂等，`fs.cp` 递归）。`.gitignore`：`node_modules/`、`out/`、`out-test/`、`*.vsix`、`media/pdf/pdf.min.mjs`、`media/pdf/pdf.worker.min.mjs`、`media/pdf/cmaps/`（**仅忽略 PDF.js 构建产物；`media/pdf/viewer.html/js/css` 为源文件，必须可提交**）。
 
 - [ ] **Step 3: 编写失败的配置测试** `test/config.test.ts`
 
 ```ts
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { expandHome, DEFAULT_NOTES_ROOT } from '../src/config';
+import { expandHome, DEFAULT_NOTES_ROOT } from '../src/util/paths';
 
 test('expandHome 展开 ~ 为 home 目录', () => {
   assert.strictEqual(expandHome('~/x'), `${process.env.HOME}/x`);
@@ -74,14 +74,13 @@ test('默认笔记库为 ~/Documents/StudyNotes', () => {
 - [ ] **Step 4: 运行测试确认失败**
 
 Run: `npm test`
-Expected: FAIL —— `../src/config` 不存在
+Expected: FAIL —— `../src/util/paths` 不存在
 
-- [ ] **Step 5: 实现 `src/config.ts` 与最小 `src/extension.ts`**
+- [ ] **Step 5: 实现 `src/util/paths.ts`、`src/config.ts` 与最小 `src/extension.ts`**
 
-- `expandHome(p: string): string`（`~` 前缀替换为 `os.homedir()`，其余原样）
-- `DEFAULT_NOTES_ROOT = '~/Documents/StudyNotes'`
+- `src/util/paths.ts`（**纯模块，不 import `vscode`**，供 `node:test` 直接测试）：`expandHome(p: string): string`（`~` 前缀替换为 `os.homedir()`，其余原样）、`DEFAULT_NOTES_ROOT = '~/Documents/StudyNotes'`
 - `AppConfig` 接口（字段照抄 Global Constraints 配置键；`webSearchProvider: 'tavily'|'bocha'|'none'`（Tavily/博查为计划 2 预留给值））
-- `loadConfig(): AppConfig` 从 `vscode.workspace.getConfiguration('aiStudy')` 读取并展开 notesRoot
+- `loadConfig(): AppConfig` 从 `vscode.workspace.getConfiguration('aiStudy')` 读取并展开 notesRoot（复用 `src/util/paths.ts`）
 - `SecretStore`：`secretStorage.get/set('aiStudy.apiKey')`
 - `extension.ts`：`activate()` 注册 `aiStudy.setApiKey`（`showInputBox: { password: true, prompt: '输入 DeepSeek API Key' }` → `setApiKey` → `showInformationMessage('API Key 已保存')`）；其余命令注册空实现占位（`registerCommand(id, () => {})`），后续任务填充；`deactivate()` 空
 
@@ -219,16 +218,14 @@ git commit -m "feat: DeepSeek 流式客户端（SSE/推理/工具调用增量解
 ### Task 3: PDF 阅读器（Custom Editor + PDF.js + 选区提取 + 阅读位置记忆）
 
 **Files:**
-- Create: `src/pdf/pdfEditor.ts`、`media/pdf/viewer.html`、`media/pdf/viewer.js`、`media/pdf/viewer.css`、`test/pdf-helpers.test.ts`
+- Create: `src/pdf/helpers.ts`、`src/pdf/pdfEditor.ts`、`media/pdf/viewer.html`、`media/pdf/viewer.js`、`media/pdf/viewer.css`、`test/pdf-helpers.test.ts`
 - Modify: `src/extension.ts`（注册 custom editor 与 `aiStudy.openPdf` 命令）、`package.json`（`activationEvents` 已含，无需改；若命令未注册则补）
 
 **Interfaces:**
 - Consumes: 无（不依赖 Task 1/2；本任务只读，划词动作在 Task 5 接入）
 - Produces:
-  - `class PdfEditorProvider implements vscode.CustomTextEditorProvider`（`static readonly viewType = 'aiStudy.pdfEditor'`；构造注入 `context: vscode.ExtensionContext` 供 Memento 存阅读位置）
-  - `function pageStateKey(fileUri: string): string`（如 `pdf.lastPage.${fileUri}`）
-  - `function clampPage(page: number, total: number): number`（1..total 夹取）
-  - `function classifyPageText(text: string): 'hasText' | 'scanned'`（trim 后为空 → `scanned`）
+  - `src/pdf/helpers.ts`（**纯模块，不 import `vscode`**，供 `node:test` 直接测试）：`pageStateKey(fileUri: string): string`（如 `pdf.lastPage.${fileUri}`）、`clampPage(page: number, total: number): number`（1..total 夹取）、`classifyPageText(text: string): 'hasText' | 'scanned'`（trim 后为空 → `scanned`）
+  - `class PdfEditorProvider implements vscode.CustomTextEditorProvider`（`static readonly viewType = 'aiStudy.pdfEditor'`；构造注入 `context: vscode.ExtensionContext` 供 Memento 存阅读位置；`pageStateKey` 等从 `./helpers` 导入）
   - viewer 内浮动工具栏骨架：`[翻译] [解释] [复制]`（Task 5 接功能；本任务先展示与隐藏，点击占位 postMessage `{ type:'toolbar-action', action:'translate' }` 等）
 
 - [ ] **Step 1: 编写失败的测试** `test/pdf-helpers.test.ts`
@@ -236,7 +233,7 @@ git commit -m "feat: DeepSeek 流式客户端（SSE/推理/工具调用增量解
 ```ts
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { clampPage, classifyPageText, pageStateKey } from '../src/pdf/pdfEditor';
+import { clampPage, classifyPageText, pageStateKey } from '../src/pdf/helpers';
 
 test('clampPage 夹取范围', () => {
   assert.strictEqual(clampPage(0, 10), 1);
@@ -257,7 +254,7 @@ test('pageStateKey 以文件为键', () => {
 Run: `npm test`
 Expected: FAIL
 
-- [ ] **Step 3: 实现 `src/pdf/pdfEditor.ts`**
+- [ ] **Step 3: 实现 `src/pdf/helpers.ts` 与 `src/pdf/pdfEditor.ts`**
 
 - `resolveCustomTextEditor(document, webviewPanel, _token)`：`webview.options = { enableScripts: true, localResourceRoots: [media/pdf 目录] }`；html 指向 `viewer.html`（`Webview.asWebviewUri` 注入 `pdfjs` 资源路径与 `initialPage`）
 - 注入脚本：`acquireVsCodeApi`，`postMessage({ type:'pdf:open', uri, fileName, initialPage })`；接收来自 viewer 的消息并转发给事件总线：`onPdfSelection(uri, page, text)`（供 Task 5 消费，用 `vscode.EventEmitter<PdfSelection>` 暴露）
@@ -424,16 +421,15 @@ git commit -m "feat: 笔记核心（frontmatter/vault 白名单/一文档一笔�
 ### Task 5: 划词动作与结果展示（编辑器结果面板 + 浮动工具栏接线）
 
 **Files:**
-- Create: `src/selection/actions.ts`、`media/result/resultPanel.html`（或复用 webview 模板）、`test/selection.test.ts`
+- Create: `src/selection/prompts.ts`、`src/selection/actions.ts`、`src/util/markdown.ts`、`test/selection.test.ts`
 - Modify: `src/extension.ts`（命令接线）、`media/pdf/viewer.js`（浮动工具栏按钮触发既有 `toolbar-action` 消息）、`src/pdf/pdfEditor.ts`（把动作结果回传 viewer 的 postMessage 通道）
 
 **Interfaces:**
 - Consumes: `LLMProvider`/`DeepSeekProvider`（Task 2）、`PdfEditorProvider.getCurrentSelection()`（Task 3）、`SecretStore`（Task 1）；`NoteService`/`WordBook`（Task 4，仅本任务测试桩）
 - Produces:
-  - `function requireSelection(text: string | undefined): string`（空/undefined 抛 `new Error('请先选中文本')`，由 UI 捕获并提示；纯函数可测）
-  - `function buildTranslatePrompt(text: string): { system: string; user: string }`（system：`你是一个翻译引擎。将用户文本翻译成中文；术语保留英文并给出释义。输出格式：译文 + 术语表。`；user：`翻译：${text}`）
-  - `function buildExplainPrompt(text: string): { system: string; user: string }`（system：`你是一位导师。用通俗语言解释用户文本，先给结论，再分点展开，最后给一个例子。`；user：`解释：${text}`）
-  - `class SelectionActions { constructor(deps: { provider: LLMProvider; config: AppConfig; getPdfSelection: () => { uri: string; page: number; text: string } | undefined }) ... }`
+  - `src/selection/prompts.ts`（**纯模块，不 import `vscode`**，供 `node:test` 直接测试）：`requireSelection(text: string | undefined): string`（空/undefined 抛 `new Error('请先选中文本')`，由 UI 捕获并提示）、`buildTranslatePrompt(text: string): { system: string; user: string }`（system：`你是一个翻译引擎。将用户文本翻译成中文；术语保留英文并给出释义。输出格式：译文 + 术语表。`；user：`翻译：${text}`）、`buildExplainPrompt(text: string): { system: string; user: string }`（system：`你是一位导师。用通俗语言解释用户文本，先给结论，再分点展开，最后给一个例子。`；user：`解释：${text}`）
+  - `src/util/markdown.ts`（**纯模块**）：`renderSimpleMarkdown(md: string): string`（转义 + `\n\n` 分段 + `**b**`/`` `code` ``/`[t](url)` 三件套）
+  - `class SelectionActions { constructor(deps: { provider: LLMProvider; config: AppConfig; getPdfSelection: () => { uri: string; page: number; text: string } | undefined }) ... }`（`requireSelection` 等从 `./prompts` 导入）
   - `translate(text: string): Promise<string>` / `explain(text: string): Promise<string>`（内部走 provider.chat，`model: config.model`，`tools` 不传；流式 delta 经 `onShowResult` 回调逐段上屏）
   - `copy(text: string): Promise<void>`
   - `onShowResult: (payload: { kind: 'translate' | 'explain'; text: string; markdown: string; source?: SourceInfo; page?: number; retry: () => void }) => void`（渲染回调，由扩展宿主注入——编辑器场景打开结果面板，PDF 场景 postMessage 到 viewer popover）
@@ -443,7 +439,7 @@ git commit -m "feat: 笔记核心（frontmatter/vault 白名单/一文档一笔�
 ```ts
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { requireSelection, buildTranslatePrompt, buildExplainPrompt } from '../src/selection/actions';
+import { requireSelection, buildTranslatePrompt, buildExplainPrompt } from '../src/selection/prompts';
 
 test('requireSelection 拒绝空选区', () => {
   assert.throws(() => requireSelection(undefined), /请先选中文本/);
@@ -467,16 +463,16 @@ test('buildExplainPrompt 输出先结论后例子结构', () => {
 Run: `npm test`
 Expected: FAIL
 
-- [ ] **Step 3: 实现 `src/selection/actions.ts`（含错误卡与重试）**
+- [ ] **Step 3: 实现 `src/selection/prompts.ts`、`src/selection/actions.ts`（含错误卡与重试）、`src/util/markdown.ts`**
 
-- `requireSelection`：trim 后为空即抛错
-- `SelectionActions`：`translate/explain` 组装 prompt → `provider.chat`（`req.onDelta` 转发 `onShowResult` 流式 markdown）→ 返回全文；捕获 `LLMError`：`noApiKey` 提示运行 `aiStudy.setApiKey`；`rateLimit` 自动重试一次（退避 1s）；其余错误卡含「重试」按钮（重新调用本方法）；`AbortError` 静默
+- `prompts.ts`：`requireSelection`：trim 后为空即抛错；`buildTranslatePrompt`/`buildExplainPrompt` 按 Interfaces 的 system 原文构造
+- `selection/actions.ts`：`translate/explain` 组装 prompt → `provider.chat`（`req.onDelta` 转发 `onShowResult` 流式 markdown）→ 返回全文；捕获 `LLMError`：`noApiKey` 提示运行 `aiStudy.setApiKey`；`rateLimit` 自动重试一次（退避 1s）；其余错误卡含「重试」按钮（重新调用本方法）；`AbortError` 静默
 - `copy`：`vscode.env.clipboard.writeText`
+- `util/markdown.ts`：`renderSimpleMarkdown`（转义 + `\n\n` 分段 + `**b**`/`` `code` ``/`[t](url)` 三件套；不引入额外依赖，预留升级位）
 
 - [ ] **Step 4: 实现结果面板与 PDF popover 回传**
 
-- 编辑器场景：`showResultPanel(title: string, render: (el) => void)` —— `window.createWebviewPanel('aiStudy.result', title, { viewColumn: vscode.ViewColumn.Active, preserveFocus: true }, { enableScripts: false })`，`el.innerHTML` 渲染 markdown（首版使用 `marked`？—— 不引依赖：用 `markdown-it`？—— 均不引入；本计划用极简渲染：代码块/加粗/段落转 HTML 的 20 行 helper 放 `src/util/markdown.ts`，`escapeHtml` + 段落/行内码，预留 `marked` 升级位）
-- 注：为保持无额外依赖，本任务在 `src/util/markdown.ts` 提供 `renderSimpleMarkdown(md: string): string`（转义 + `\n\n` 分段 + `**b**`/`` `code` ``/`[t](url)` 三件套）
+- 编辑器场景：`showResultPanel(title: string, render: (el) => void)` —— `window.createWebviewPanel('aiStudy.result', title, { viewColumn: vscode.ViewColumn.Active, preserveFocus: true }, { enableScripts: false })`，用 `renderSimpleMarkdown` 渲染
 - PDF 场景：`PdfEditorProvider.broadcastToPdf(uri, msg)` 将 `{ type:'result', kind, markdown, page, source }` 发给对应 viewer；viewer.js 收到后渲染进页内 popover（浮层，含「关闭」「加笔记」「加单词本」按钮——按钮先禁用，Task 6 接线）
 
 - [ ] **Step 5: 在 `src/extension.ts` 接线命令**
