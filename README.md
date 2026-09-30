@@ -1,4 +1,4 @@
-# AI 学习助手（ai-study-helper）
+# Nota - AI 学习助手（nota-vscode）
 
 「读 PDF → 划词学习 → 记笔记」的 VS Code 学习辅助扩展：
 
@@ -12,8 +12,8 @@
 ```bash
 npm install        # 安装依赖
 npm run check      # 编译 + 单测（38 个用例）
-npm run package    # 产出 ai-study-helper-0.1.0.vsix
-code --install-extension ai-study-helper-0.1.0.vsix
+npm run package    # 产出 nota-vscode-0.1.0.vsix
+code --install-extension nota-vscode-0.1.0.vsix
 ```
 
 也可以直接用 VS Code 打开本目录按 `F5` 启动扩展开发宿主调试。

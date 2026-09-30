@@ -1,6 +1,6 @@
 {
-  "name": "ai-study-helper",
-  "displayName": "AI 学习助手",
+  "name": "nota-vscode",
+  "displayName": "Nota - AI 学习助手",
   "description": "读 PDF → 划词学习 → 记笔记：AI 辅助学习助手",
   "publisher": "pico-local",
   "version": "0.1.0",
