@@ -248,3 +248,102 @@ body {
 #floating-toolbar button:hover {
   background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.25));
 }
+
+/* ---------- 划词结果 popover（Task 5） ---------- */
+#result-popover {
+  position: fixed;
+  right: 14px;
+  top: 48px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 28px));
+  max-height: calc(100vh - 72px);
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.4));
+  border-radius: 8px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+#result-popover .result-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+#result-popover .result-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#result-popover .result-close {
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#result-popover .result-close:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.25));
+}
+
+#result-popover .result-body {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+
+#result-popover .result-body p {
+  margin: 0 0 8px;
+}
+
+#result-popover .result-body code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.92em;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.15));
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+#result-popover .result-body a {
+  color: var(--vscode-textLink-foreground);
+}
+
+#result-popover .result-actions {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+#result-popover .result-btn {
+  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  font-size: 12px;
+  padding: 3px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#result-popover .result-btn:not([disabled]):hover {
+  background: var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.35));
+}
+
+#result-popover .result-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

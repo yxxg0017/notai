@@ -31,6 +31,8 @@ const state = {
   renderToken: 0,
   selectionPage: 0,
   selectionText: '',
+  /** 错误卡「重试」所需上下文（{ action, text, page }；null 表示无） */
+  retryCtx: null,
 };
 
 /* ---------------- DOM ---------------- */
@@ -44,6 +46,11 @@ const loadingEl = $('loading');
 const errorEl = $('error-placeholder');
 const errorMsgEl = $('error-message');
 const floatToolbar = $('floating-toolbar');
+const resultPopover = $('result-popover');
+const resultTitleEl = $('result-title');
+const resultBodyEl = $('result-body');
+const resultRetryBtn = $('result-retry');
+const resultCloseBtn = $('result-close');
 
 function clamp(v, lo, hi) {
   return Math.min(Math.max(v, lo), hi);
@@ -66,6 +73,7 @@ async function openPdf(config) {
   pagesEl.textContent = '';
   hideError();
   hideFloatToolbar();
+  hideResultPopover();
   loadingEl.hidden = false;
   document.title = config.fileName || 'PDF 阅读器';
   filenameEl.textContent = config.fileName || '';
@@ -343,6 +351,7 @@ document.addEventListener('keydown', (e) => {
       sel.removeAllRanges();
     }
     hideFloatToolbar();
+    hideResultPopover();
   }
 });
 
@@ -438,6 +447,37 @@ pagesEl.addEventListener('click', (e) => {
   });
 });
 
+/* ---------------- 结果 popover（extension 回传的划词结果） ---------------- */
+
+/** 展示 extension 回传的 { type:'result', kind, text, markdown, page, source, error } */
+function showResultPopover(msg) {
+  resultTitleEl.textContent = msg.kind === 'translate' ? '翻译结果' : '解释结果';
+  // markdown 为扩展侧 renderSimpleMarkdown 已转义的安全 HTML 片段
+  resultBodyEl.innerHTML = msg.markdown || '';
+  const isError = Boolean(msg.error);
+  resultRetryBtn.hidden = !isError;
+  // 错误卡：记录重试上下文（重试 = 重新发一次 toolbar-action）
+  state.retryCtx = isError
+    ? { action: msg.kind, text: msg.text, page: msg.page }
+    : null;
+  resultPopover.hidden = false;
+}
+
+function hideResultPopover() {
+  resultPopover.hidden = true;
+  state.retryCtx = null;
+}
+
+resultCloseBtn.addEventListener('click', hideResultPopover);
+resultRetryBtn.addEventListener('click', () => {
+  const ctx = state.retryCtx;
+  if (!ctx) {
+    return;
+  }
+  hideResultPopover();
+  vscode.postMessage({ type: 'toolbar-action', action: ctx.action, text: ctx.text, page: ctx.page });
+});
+
 /* ---------------- 错误占位 ---------------- */
 
 function showError(message) {
@@ -465,6 +505,8 @@ window.addEventListener('message', (event) => {
   }
   if (msg.type === 'pdf:open') {
     void openPdf(msg);
+  } else if (msg.type === 'result') {
+    showResultPopover(msg);
   }
 });
 

@@ -34,6 +34,22 @@ interface PdfOpenMessage {
 }
 
 /**
+ * extension -> viewer 消息：划词结果（broadcastToPdf 发送）。
+ * `markdown` 为 renderSimpleMarkdown 已渲染的安全 HTML 片段，viewer 直接 innerHTML。
+ * `error` 存在时 viewer 在 popover 内显示「重试」按钮（重新走 toolbar-action 回传）。
+ */
+export interface PdfResultMessage {
+  type: 'result';
+  kind: 'translate' | 'explain';
+  /** 源选区文本（viewer 重试时回传） */
+  text: string;
+  markdown: string;
+  page: number;
+  source: { uri: string; page: number };
+  error?: boolean;
+}
+
+/**
  * PDF 阅读器 Custom Text Editor。
  *
  * 扩展侧只负责：读取/回写阅读位置（workspaceState）、把 PDF 资源地址与初始页
@@ -51,6 +67,12 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
   private currentSelection: PdfSelection | undefined;
   /** 每个文档最后看到的页码（关闭面板时回写；键为 uri.toString()） */
   private readonly lastPageByUri = new Map<string, number>();
+  /** 已打开的 viewer 面板（键为 uri.toString()；一个文件可开多个面板） */
+  private readonly panelsByUri = new Map<string, Set<vscode.WebviewPanel>>();
+  /** toolbar-action 动作处理器（由 extension.ts 注入，Task 5 接线） */
+  private actionHandler:
+    | ((action: Exclude<ToolbarAction, 'note'>, selection: PdfSelection) => void)
+    | undefined;
   private readonly output: vscode.OutputChannel;
 
   public constructor(
@@ -65,12 +87,44 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
     return this.currentSelection;
   }
 
+  /** 注入浮动工具栏动作处理器（translate/explain/copy；note 留给 Task 6） */
+  public setActionHandler(
+    handler: (action: Exclude<ToolbarAction, 'note'>, selection: PdfSelection) => void,
+  ): void {
+    this.actionHandler = handler;
+  }
+
+  /** 向指定文档的所有 viewer 面板广播消息（划词结果回传） */
+  public broadcastToPdf(uri: string, msg: PdfResultMessage): void {
+    const panels = this.panelsByUri.get(uri);
+    if (!panels) {
+      return;
+    }
+    for (const panel of panels) {
+      void panel.webview.postMessage(msg);
+    }
+  }
+
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
     panel: vscode.WebviewPanel,
     _token: vscode.CancellationToken,
   ): Promise<void> {
     const uri = document.uri;
+
+    // 记录面板（broadcastToPdf 用）
+    let panels = this.panelsByUri.get(uri.toString());
+    if (!panels) {
+      panels = new Set<vscode.WebviewPanel>();
+      this.panelsByUri.set(uri.toString(), panels);
+    }
+    panels.add(panel);
+    panel.onDidDispose(() => {
+      panels.delete(panel);
+      if (panels.size === 0) {
+        this.panelsByUri.delete(uri.toString());
+      }
+    });
 
     // ---- 1. 阅读位置：读上次页码作为 initialPage（1..∞ 夹取，具体页数由 viewer 二次夹取）----
     const savedPage = this.context.workspaceState.get<number>(pageStateKey(uri.toString()));
@@ -160,7 +214,7 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
         break;
       }
       case 'toolbar-action': {
-        // Task 5 接线真实动作；本任务：记录并广播，动作本身不被执行
+        // 选区（可含空文本；note 由扫描页「手动添加笔记」发出）
         const selection: PdfSelection = {
           uri,
           page: message.page ?? 1,
@@ -173,6 +227,15 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
         this.output.appendLine(
           `[pdf] toolbar-action ${message.action ?? '?'} @p${selection.page} (${selection.text.length} chars)`,
         );
+        // Task 5 接线：翻译/解释/复制交给注入的处理器执行（note 留给 Task 6）
+        const action = message.action;
+        if (
+          this.actionHandler &&
+          (action === 'translate' || action === 'explain' || action === 'copy') &&
+          selection.text.trim() !== ''
+        ) {
+          this.actionHandler(action, selection);
+        }
         break;
       }
       case 'page-change': {
