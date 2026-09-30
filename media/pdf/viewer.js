@@ -9,6 +9,22 @@ import * as pdfjsLib from './pdf.min.mjs';
 
 const vscode = acquireVsCodeApi();
 
+/** 诊断上报（扩展侧记录到 trace 日志；失败静默） */
+function diag(msg) {
+  try {
+    vscode.postMessage({ type: 'viewer-diag', message: msg });
+  } catch {
+    /* 忽略 */
+  }
+}
+window.addEventListener('error', (e) => {
+  diag(`window.onerror: ${e.message} @${e.filename || ''}:${e.lineno || 0}`);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  diag(`unhandledrejection: ${r && r.message ? r.message : String(r)}`);
+});
+
 /* ---------------- pdf.js 运行时配置（相对本模块的 asWebviewUri 解析） ---------------- */
 const MODULE_BASE = new URL('.', import.meta.url);
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.mjs', MODULE_BASE).href;
@@ -82,6 +98,7 @@ async function openPdf(config) {
   filenameEl.title = config.fileName || '';
 
   try {
+    diag(`openPdf entry file=${config.fileName || '?'} src=...${String(config.src || '').slice(-64)}`);
     const resp = await fetch(config.src);
     if (!resp.ok) {
       throw new Error(`读取文件失败（HTTP ${resp.status}）`);
@@ -90,6 +107,7 @@ async function openPdf(config) {
       return;
     }
     const data = await resp.arrayBuffer();
+    diag(`fetched ${data.byteLength} bytes src=...${String(config.src || '').slice(-64)}`);
     const doc = await pdfjsLib.getDocument({
       data,
       cMapUrl: C_MAP_URL,
@@ -114,7 +132,9 @@ async function openPdf(config) {
     if (token !== state.loadToken) {
       return;
     }
-    showError(err instanceof Error ? err.message : String(err));
+    const msg = err instanceof Error ? err.message : String(err);
+    diag(`openPdf error: ${msg}`);
+    showError(msg);
   } finally {
     if (token === state.loadToken) {
       loadingEl.hidden = true;

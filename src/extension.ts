@@ -258,7 +258,11 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         target = picked[0];
       }
-      await vscode.commands.executeCommand('vscode.openWith', target, PdfEditorProvider.viewType);
+      // preview: false —— 每个 PDF 独立非预览标签页；避免 VS Code 预览式复用自定义编辑器面板
+      // 时面板未重新 resolve（旧文档内容残留 / 新文档无内容），见 PDF 追踪日志
+      await vscode.commands.executeCommand('vscode.openWith', target, PdfEditorProvider.viewType, {
+        preview: false,
+      });
     })
   );
 

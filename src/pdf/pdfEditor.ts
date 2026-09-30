@@ -25,13 +25,26 @@ interface ViewerInMessage {
     | 'toolbar-action'
     | 'note-action'
     | 'page-change'
-    | 'pdf:error';
+    | 'pdf:error'
+    | 'viewer-diag';
   pages?: number;
   page?: number;
   text?: string;
   action?: ToolbarAction | NoteAction;
   message?: string;
 }
+
+/** 面板标识（诊断用）：同一 WebviewPanel 对象复用或跨文档重用时保持同一编号 */
+const panelIds = new WeakMap<vscode.WebviewPanel, number>();
+let panelSeq = 0;
+const panelIdOf = (panel: vscode.WebviewPanel): number => {
+  let id = panelIds.get(panel);
+  if (id === undefined) {
+    id = ++panelSeq;
+    panelIds.set(panel, id);
+  }
+  return id;
+};
 
 /** extension -> viewer 消息（pdf:open 由本类在收到 ready 后发出） */
 interface PdfOpenMessage {
@@ -120,12 +133,26 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
     }
   }
 
+  /** 诊断追踪：输出通道 + globalStorage/nota-trace.log（排查「打不开/串文档」用） */
+  private trace(msg: string): void {
+    this.output.appendLine(`[trace] ${msg}`);
+    try {
+      const file = path.join(this.context.globalStorageUri.fsPath, 'nota-trace.log');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.appendFileSync(file, `[${new Date().toISOString()}] ${msg}\n`);
+    } catch {
+      /* 追踪日志失败不影响主流程 */
+    }
+  }
+
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
     panel: vscode.WebviewPanel,
     _token: vscode.CancellationToken,
   ): Promise<void> {
     const uri = document.uri;
+    const panelId = panelIdOf(panel);
+    this.trace(`resolve panel#${panelId} doc=${uri.fsPath} frag=${uri.fragment || '-'}`);
     // 位置记忆键统一去掉 fragment：回链 `vscode://file/...#page=N` 与正常打开必须命中同一键
     const uriKey = uri.with({ fragment: '' }).toString();
 
@@ -166,7 +193,7 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
 
     // ---- 3. viewer -> extension 消息 ----
     const messageDisposable = panel.webview.onDidReceiveMessage((message: ViewerInMessage) =>
-      this.handleViewerMessage(document, message),
+      this.handleViewerMessage(document, panelId, message),
     );
     panel.onDidDispose(() => messageDisposable.dispose());
 
@@ -175,6 +202,7 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
       const lastPage = this.lastPageByUri.get(uriKey) ?? initialPage;
       void this.context.workspaceState.update(pageStateKey(uriKey), lastPage);
       this.output.appendLine(`[pdf] closed ${uri.fsPath} @ page ${lastPage}`);
+      this.trace(`disposed panel#${panelId} doc=${uri.fsPath}`);
     });
 
     // ---- 5. 先注册 ready 监听，再设置 HTML，避免 viewer 初始化很快时丢失消息 ----
@@ -191,12 +219,14 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
         initialPage,
         src: panel.webview.asWebviewUri(uri).toString(),
       };
+      this.trace(`sendOpen panel#${panelId} src=...${message.src.slice(-64)} iPage=${initialPage}`);
       void panel.webview.postMessage(message);
     };
     const readyDisposable = panel.webview.onDidReceiveMessage((message: ViewerInMessage) => {
       if (message.type !== 'ready') {
         return;
       }
+      this.trace(`ready panel#${panelId}`);
       readyDisposable.dispose();
       sendOpen();
     });
@@ -226,6 +256,7 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
 
   private handleViewerMessage(
     document: vscode.TextDocument,
+    panelId: number,
     message: ViewerInMessage,
   ): void {
     const uri = document.uri.toString();
@@ -235,6 +266,7 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
         break;
       case 'pdf:loaded': {
         this.output.appendLine(`[pdf] loaded ${document.uri.fsPath}: ${message.pages ?? 0} pages`);
+        this.trace(`loaded panel#${panelId} pages=${message.pages ?? 0}`);
         break;
       }
       case 'pdf-selection': {
@@ -299,6 +331,11 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
       }
       case 'pdf:error': {
         this.output.appendLine(`[pdf] viewer error: ${message.message ?? 'unknown'}`);
+        this.trace(`error ${message.message ?? 'unknown'}`);
+        break;
+      }
+      case 'viewer-diag': {
+        this.trace(`viewer: ${message.message ?? ''}`);
         break;
       }
     }
