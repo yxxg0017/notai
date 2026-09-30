@@ -1,5 +1,5 @@
 /**
- * 划词动作编排：翻译 / 解释 / 复制 + 错误卡与重试。
+ * 划词动作编排：翻译 / 解释 / 复制 + 加笔记 / 加单词本 + 错误卡与重试。
  *
  * 本文件允许 `import 'vscode'`（错误码用原生提示走 VS Code UI）；纯逻辑
  * （选区校验、提示词、Markdown 渲染）分别下沉到 ./prompts 与 ../util/markdown。
@@ -10,6 +10,9 @@ import type { LLMProvider } from '../core/llm/types';
 import type { AppConfig } from '../config';
 import { requireSelection, buildTranslatePrompt, buildExplainPrompt } from './prompts';
 import { renderSimpleMarkdown } from '../util/markdown';
+import { NoteService } from '../notes/noteService';
+import type { SourceInfo } from '../notes/noteService';
+import { WordBook } from '../notes/wordbook';
 
 /** 结果来源（当前为 PDF 选区；编辑器场景不设置） */
 export interface SelectionSource {
@@ -38,6 +41,10 @@ export interface SelectionActionsDeps {
   /** 当前 PDF 选区（无则返回 undefined） */
   getPdfSelection: () => { uri: string; page: number; text: string } | undefined;
   onShowResult: (payload: ShowResultPayload) => void;
+  /** 笔记服务（一文档一笔记续写；Task 6 接线） */
+  noteService: NoteService;
+  /** 全局唯一单词本（Task 6 接线） */
+  wordBook: WordBook;
 }
 
 /** rateLimit 自动重试的退避时长（毫秒） */
@@ -70,6 +77,57 @@ export class SelectionActions {
   /** 复制选中文本到剪贴板 */
   async copy(text: string): Promise<void> {
     await vscode.env.clipboard.writeText(text);
+  }
+
+  /**
+   * 加笔记：确认标题（预填来源名，取消则中止）→ 一文档一笔记续写（`## 手动笔记` 块）
+   * → `ViewColumn.Beside` 分屏打开 → 光标置于文件末尾续写区 → 提示。
+   *
+   * @returns true = 已打开笔记；false = 用户取消标题输入
+   */
+  async addNote(text: string, source: SourceInfo): Promise<boolean> {
+    const title = await vscode.window.showInputBox({
+      prompt: '笔记标题',
+      value: source.displayName,
+    });
+    if (title === undefined) {
+      return false; // 用户取消
+    }
+    const { noteService } = this.deps;
+    const { notePath } = await noteService.openOrCreate(source, {
+      headings: [{ heading: '手动笔记', body: text }],
+    });
+    const doc = await vscode.window.showTextDocument(vscode.Uri.file(notePath), {
+      viewColumn: vscode.ViewColumn.Beside,
+      preview: false,
+    });
+    // 光标置于文件末尾续写区（showTextDocument resolve 后再设置选区并滚动定位）
+    const end = doc.document.positionAt(doc.document.getText().length);
+    doc.selection = new vscode.Selection(end, end);
+    doc.revealRange(new vscode.Range(end, end), vscode.TextEditorRevealType.InCenter);
+    void vscode.window.showInformationMessage('已打开笔记，可直接续写');
+    return true;
+  }
+
+  /**
+   * 加单词本：输入翻译（允许留空，取消则中止）→ 追加到全局唯一单词本
+   * （word = 文本首词，整段截断 50 字；source = 来源名；date = 今日）→ 提示。
+   *
+   * @returns true = 已加入单词本；false = 用户取消翻译输入
+   */
+  async addToWordBook(text: string, source: SourceInfo): Promise<boolean> {
+    const translation = await vscode.window.showInputBox({ prompt: '翻译', value: '' });
+    if (translation === undefined) {
+      return false; // 用户取消
+    }
+    await this.deps.wordBook.addEntry({
+      word: firstToken(text, 50),
+      translation,
+      source: source.displayName,
+      date: localDateString(),
+    });
+    void vscode.window.showInformationMessage('已加入单词本');
+    return true;
   }
 
   private async run(
@@ -162,4 +220,17 @@ export class SelectionActions {
       void vscode.commands.executeCommand('aiStudy.setApiKey');
     }
   }
+}
+
+/** 文本首词（空白分隔第一段），超长截断到 max 字符（单词本词条用） */
+function firstToken(text: string, max: number): string {
+  return (text.trim().split(/\s+/)[0] ?? '').slice(0, max);
+}
+
+/** 今日本地日期字符串（YYYY-MM-DD；用本地时区而非 toISOString 的 UTC） */
+function localDateString(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
 }

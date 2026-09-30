@@ -33,6 +33,8 @@ const state = {
   selectionText: '',
   /** 错误卡「重试」所需上下文（{ action, text, page }；null 表示无） */
   retryCtx: null,
+  /** 当前 popover 结果的来源选区（{ text, page }；「加笔记/加单词本」按钮使用；null 表示无） */
+  resultCtx: null,
 };
 
 /* ---------------- DOM ---------------- */
@@ -428,6 +430,11 @@ floatToolbar.addEventListener('click', (e) => {
   const action = btn.dataset.action;
   const text = state.selectionText || (window.getSelection() ? window.getSelection().toString() : '');
   const page = state.selectionPage || state.currentPage;
+  // 加笔记/加单词本（Task 6 接线）：走 note-action 通道，由扩展侧调用 SelectionActions
+  if (action === 'note' || action === 'wordbook') {
+    vscode.postMessage({ type: 'note-action', action, text, page });
+    return;
+  }
   // 真实动作由 Task 5 在扩展侧接线；本任务只发出消息
   vscode.postMessage({ type: 'toolbar-action', action, text, page });
 });
@@ -460,12 +467,15 @@ function showResultPopover(msg) {
   state.retryCtx = isError
     ? { action: msg.kind, text: msg.text, page: msg.page }
     : null;
+  // 「加笔记/加单词本」使用结果的来源选区（与重试同源：popover 展示的源文本）
+  state.resultCtx = { text: msg.text, page: msg.page };
   resultPopover.hidden = false;
 }
 
 function hideResultPopover() {
   resultPopover.hidden = true;
   state.retryCtx = null;
+  state.resultCtx = null;
 }
 
 resultCloseBtn.addEventListener('click', hideResultPopover);
@@ -476,6 +486,24 @@ resultRetryBtn.addEventListener('click', () => {
   }
   hideResultPopover();
   vscode.postMessage({ type: 'toolbar-action', action: ctx.action, text: ctx.text, page: ctx.page });
+});
+
+// 「加笔记/加单词本」（Task 6 接线）：携带 popover 结果的源选区文本与页码
+resultPopover.querySelector('.result-actions').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-result-action]');
+  if (!btn) {
+    return;
+  }
+  const ctx = state.resultCtx;
+  if (!ctx) {
+    return;
+  }
+  vscode.postMessage({
+    type: 'note-action',
+    action: btn.dataset.resultAction,
+    text: ctx.text,
+    page: ctx.page,
+  });
 });
 
 /* ---------------- 错误占位 ---------------- */

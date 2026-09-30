@@ -10,16 +10,26 @@ export interface PdfSelection {
   text: string;
 }
 
-/** 浮动工具栏动作（note = 扫描页「手动添加笔记」占位，Task 6 接线） */
+/** 浮动工具栏动作（note = 扫描页「手动添加笔记」；Task 6 接线） */
 export type ToolbarAction = 'translate' | 'explain' | 'copy' | 'note';
+
+/** 笔记/单词本动作（viewer「加笔记/加单词本」按钮 → note-action 消息） */
+export type NoteAction = 'note' | 'wordbook';
 
 /** viewer -> extension 消息 */
 interface ViewerInMessage {
-  type: 'ready' | 'pdf:loaded' | 'pdf-selection' | 'toolbar-action' | 'page-change' | 'pdf:error';
+  type:
+    | 'ready'
+    | 'pdf:loaded'
+    | 'pdf-selection'
+    | 'toolbar-action'
+    | 'note-action'
+    | 'page-change'
+    | 'pdf:error';
   pages?: number;
   page?: number;
   text?: string;
-  action?: ToolbarAction;
+  action?: ToolbarAction | NoteAction;
   message?: string;
 }
 
@@ -69,10 +79,10 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly lastPageByUri = new Map<string, number>();
   /** 已打开的 viewer 面板（键为 uri.toString()；一个文件可开多个面板） */
   private readonly panelsByUri = new Map<string, Set<vscode.WebviewPanel>>();
-  /** toolbar-action 动作处理器（由 extension.ts 注入，Task 5 接线） */
-  private actionHandler:
-    | ((action: Exclude<ToolbarAction, 'note'>, selection: PdfSelection) => void)
-    | undefined;
+  /** toolbar-action 动作处理器（由 extension.ts 注入，Task 5 接线；note 亦在此路由） */
+  private actionHandler: ((action: ToolbarAction, selection: PdfSelection) => void) | undefined;
+  /** note-action 处理器（viewer「加笔记/加单词本」→ SelectionActions，Task 6 接线） */
+  private noteActionHandler: ((action: NoteAction, selection: PdfSelection) => void) | undefined;
   private readonly output: vscode.OutputChannel;
 
   public constructor(
@@ -87,11 +97,16 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
     return this.currentSelection;
   }
 
-  /** 注入浮动工具栏动作处理器（translate/explain/copy；note 留给 Task 6） */
-  public setActionHandler(
-    handler: (action: Exclude<ToolbarAction, 'note'>, selection: PdfSelection) => void,
-  ): void {
+  /** 注入浮动工具栏动作处理器（translate/explain/copy/note；Task 5 接线，note 于 Task 6 路由） */
+  public setActionHandler(handler: (action: ToolbarAction, selection: PdfSelection) => void): void {
     this.actionHandler = handler;
+  }
+
+  /** 注入「加笔记/加单词本」处理器（viewer note-action 消息 → SelectionActions，Task 6 接线） */
+  public setNoteActionHandler(
+    handler: (action: NoteAction, selection: PdfSelection) => void,
+  ): void {
+    this.noteActionHandler = handler;
   }
 
   /** 向指定文档的所有 viewer 面板广播消息（划词结果回传） */
@@ -227,14 +242,30 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
         this.output.appendLine(
           `[pdf] toolbar-action ${message.action ?? '?'} @p${selection.page} (${selection.text.length} chars)`,
         );
-        // Task 5 接线：翻译/解释/复制交给注入的处理器执行（note 留给 Task 6）
+        // Task 5 接线：翻译/解释/复制交给注入的处理器执行；Task 6 接线：note（扫描页手动笔记）
         const action = message.action;
         if (
           this.actionHandler &&
-          (action === 'translate' || action === 'explain' || action === 'copy') &&
-          selection.text.trim() !== ''
+          (action === 'translate' || action === 'explain' || action === 'copy' || action === 'note') &&
+          (selection.text.trim() !== '' || action === 'note')
         ) {
           this.actionHandler(action, selection);
+        }
+        break;
+      }
+      case 'note-action': {
+        // viewer「加笔记/加单词本」按钮（popover / 浮动工具栏）→ SelectionActions
+        const selection: PdfSelection = {
+          uri,
+          page: message.page ?? 1,
+          text: message.text ?? '',
+        };
+        this.output.appendLine(
+          `[pdf] note-action ${message.action ?? '?'} @p${selection.page} (${selection.text.length} chars)`,
+        );
+        const action = message.action;
+        if (this.noteActionHandler && (action === 'note' || action === 'wordbook')) {
+          this.noteActionHandler(action, selection);
         }
         break;
       }

@@ -1,25 +1,19 @@
 import * as vscode from 'vscode';
+import * as path from 'node:path';
 import { SecretStore, loadConfig } from './config';
 import { DeepSeekProvider } from './core/llm/deepseek';
 import { PdfEditorProvider } from './pdf/pdfEditor';
-import type { ToolbarAction } from './pdf/pdfEditor';
+import type { ToolbarAction, NoteAction, PdfSelection } from './pdf/pdfEditor';
 import { SelectionActions } from './selection/actions';
 import type { ShowResultPayload } from './selection/actions';
 import { requireSelection } from './selection/prompts';
 import { renderSimpleMarkdown } from './util/markdown';
-
-/** 占位命令：后续任务逐个填充实现（与 package.json contributes.commands 保持一致） */
-const PLACEHOLDER_COMMANDS: readonly string[] = [
-  'aiStudy.addNoteFromSelection',
-  'aiStudy.addToWordBook',
-];
+import { NoteService } from './notes/noteService';
+import type { SourceInfo } from './notes/noteService';
+import { WordBook } from './notes/wordbook';
 
 export function activate(context: vscode.ExtensionContext): void {
   const { subscriptions } = context;
-
-  for (const id of PLACEHOLDER_COMMANDS) {
-    subscriptions.push(vscode.commands.registerCommand(id, () => { /* 后续任务填充 */ }));
-  }
 
   const config = loadConfig();
 
@@ -67,18 +61,53 @@ export function activate(context: vscode.ExtensionContext): void {
       // 编辑器场景：结果面板
       showEditorResultPanel(payload);
     },
+    noteService: new NoteService(config.notesRoot),
+    wordBook: new WordBook(config.notesRoot),
   });
   // 注：onShowResult 中编辑器/PDF 的路由由 pdfTarget 决定（见 report 中消息流说明），
   // 避免「编辑器命令 + 陈旧 PDF 选区」时误投到 popover。
 
+  /** 由 PDF 选区构造笔记来源信息（page 始终携带；text 非空时作为 quote） */
+  const pdfSourceFor = (selection: PdfSelection): SourceInfo => {
+    const fsPath = vscode.Uri.parse(selection.uri).fsPath;
+    return {
+      displayName: path.basename(fsPath),
+      sourcePath: fsPath,
+      sourceType: 'pdf',
+      page: selection.page,
+      ...(selection.text ? { quote: selection.text } : {}),
+    };
+  };
+
+  /** 「加笔记/加单词本」入口（viewer note-action / 扫描页手动笔记 / 编辑器命令共用） */
+  const runNoteAction = async (
+    action: NoteAction,
+    selection: PdfSelection,
+  ): Promise<void> => {
+    const source = pdfSourceFor(selection);
+    if (action === 'note') {
+      await actions.addNote(selection.text, source);
+    } else {
+      await actions.addToWordBook(selection.text, source);
+    }
+  };
+  pdfProvider.setNoteActionHandler((action, selection) => {
+    void runNoteAction(action, selection);
+  });
+
   /** PDF 浮动工具栏动作入口：设置渲染上下文后执行对应动作 */
   const runPdfAction = async (
-    action: Exclude<ToolbarAction, 'note'>,
+    action: ToolbarAction,
     selection: { uri: string; page: number; text: string },
   ): Promise<void> => {
     if (action === 'copy') {
       await actions.copy(selection.text);
       void vscode.window.showInformationMessage('已复制');
+      return;
+    }
+    if (action === 'note') {
+      // 扫描页「手动添加笔记」（text 为空，仅携带页码）
+      await runNoteAction('note', selection);
       return;
     }
     pdfTarget = { uri: selection.uri, page: selection.page };
@@ -129,6 +158,55 @@ export function activate(context: vscode.ExtensionContext): void {
   registerSelectionCommand('aiStudy.translateSelection');
   registerSelectionCommand('aiStudy.explainSelection');
   registerSelectionCommand('aiStudy.copySelection');
+
+  /** 取当前选区文本与来源信息（编辑器非空选区优先；否则 PDF 当前选区）；无选区抛「请先选中文本」 */
+  const resolveSelectionSource = (): { text: string; source: SourceInfo } => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && !editor.selection.isEmpty) {
+      const text = editor.document.getText(editor.selection);
+      const fsPath = editor.document.uri.fsPath;
+      return {
+        text,
+        source: {
+          displayName: path.basename(fsPath),
+          sourcePath: fsPath,
+          sourceType: 'editor',
+        },
+      };
+    }
+    const sel = pdfProvider.getCurrentSelection();
+    if (sel) {
+      return { text: sel.text, source: pdfSourceFor(sel) };
+    }
+    throw new Error('请先选中文本');
+  };
+
+  // ---- 加笔记 / 加单词本命令（编辑器右键与命令面板；PDF 场景走 note-action 消息） ----
+  const registerNoteCommand = (
+    id: 'aiStudy.addNoteFromSelection' | 'aiStudy.addToWordBook',
+  ): void => {
+    subscriptions.push(
+      vscode.commands.registerCommand(id, async () => {
+        try {
+          const { text, source } = resolveSelectionSource();
+          if (id === 'aiStudy.addNoteFromSelection') {
+            await actions.addNote(text, source);
+          } else {
+            await actions.addToWordBook(text, source);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (message === '请先选中文本') {
+            void vscode.window.showWarningMessage('请先选中文本');
+          } else {
+            void vscode.window.showErrorMessage(message);
+          }
+        }
+      }),
+    );
+  };
+  registerNoteCommand('aiStudy.addNoteFromSelection');
+  registerNoteCommand('aiStudy.addToWordBook');
 
   /** 编辑器结果面板：流式/错误卡均渲染 renderSimpleMarkdown 输出；错误时提供原生「重试」 */
   function showEditorResultPanel(payload: ShowResultPayload): void {
