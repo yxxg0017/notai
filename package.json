@@ -1,0 +1,204 @@
+{
+  "name": "nota-vscode",
+  "displayName": "Nota - AI 学习助手",
+  "description": "读 PDF → 划词学习 → 记笔记：AI 辅助学习助手",
+  "publisher": "pico-local",
+  "version": "0.1.0",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Education"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCustomEditor:aiStudy.pdfEditor"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiStudy.openPdf",
+        "title": "AI 学习: 打开 PDF",
+        "icon": "$(file-pdf)"
+      },
+      {
+        "command": "aiStudy.translateSelection",
+        "title": "AI 学习: 翻译选中内容"
+      },
+      {
+        "command": "aiStudy.explainSelection",
+        "title": "AI 学习: 解释选中内容"
+      },
+      {
+        "command": "aiStudy.copySelection",
+        "title": "AI 学习: 复制选中内容"
+      },
+      {
+        "command": "aiStudy.addNoteFromSelection",
+        "title": "AI 学习: 添加笔记"
+      },
+      {
+        "command": "aiStudy.addToWordBook",
+        "title": "AI 学习: 添加到单词本"
+      },
+      {
+        "command": "aiStudy.setApiKey",
+        "title": "AI 学习: 设置 API Key"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "aiStudy.translateSelection",
+          "when": "editorHasSelection",
+          "group": "aiStudy@1"
+        },
+        {
+          "command": "aiStudy.explainSelection",
+          "when": "editorHasSelection",
+          "group": "aiStudy@2"
+        },
+        {
+          "command": "aiStudy.copySelection",
+          "when": "editorHasSelection",
+          "group": "aiStudy@3"
+        },
+        {
+          "command": "aiStudy.addNoteFromSelection",
+          "when": "editorHasSelection",
+          "group": "aiStudy@4"
+        },
+        {
+          "command": "aiStudy.addToWordBook",
+          "when": "editorHasSelection",
+          "group": "aiStudy@5"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "aiStudy.openPdf",
+          "when": "resourceExtname == .pdf",
+          "group": "aiStudy@1"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "aiStudy.pdfEditor",
+        "displayName": "AI 学习助手 PDF 阅读器",
+        "selector": [
+          {
+            "filenamePattern": "*.pdf"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configuration": {
+      "title": "AI 学习助手",
+      "properties": {
+        "aiStudy.notesRoot": {
+          "type": "string",
+          "default": "~/Documents/StudyNotes",
+          "description": "笔记库根目录（~ 会展开为当前用户主目录）"
+        },
+        "aiStudy.provider": {
+          "type": "string",
+          "enum": [
+            "deepseek",
+            "openai-compatible"
+          ],
+          "default": "deepseek",
+          "description": "LLM 提供商"
+        },
+        "aiStudy.baseUrl": {
+          "type": "string",
+          "default": "https://api.deepseek.com/v1",
+          "description": "OpenAI 兼容接口地址"
+        },
+        "aiStudy.model": {
+          "type": "string",
+          "default": "deepseek-chat",
+          "description": "默认模型"
+        },
+        "aiStudy.models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "deepseek-chat",
+            "deepseek-reasoner"
+          ],
+          "description": "模型选择器候选列表"
+        },
+        "aiStudy.apiKey": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "restricted": true,
+          "description": "DeepSeek API Key（存储于 SecretStorage，不在设置文件中明文保存）"
+        },
+        "aiStudy.maxSteps": {
+          "type": "number",
+          "default": 8,
+          "description": "每轮最多工具调用次数"
+        },
+        "aiStudy.sidePanelWidth": {
+          "type": "number",
+          "default": 45,
+          "description": "笔记分屏宽度（%）（预留，暂不生效）"
+        },
+        "aiStudy.webSearch.provider": {
+          "type": "string",
+          "enum": [
+            "tavily",
+            "bocha",
+            "none"
+          ],
+          "default": "tavily",
+          "description": "网页搜索提供商（Tavily / 博查，计划 2 启用）"
+        },
+        "aiStudy.webSearch.apiKey": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "restricted": true,
+          "description": "网页搜索 API Key（存储于 SecretStorage，不在设置文件中明文保存）"
+        },
+        "aiStudy.enableWorkspaceWrite": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用工作区写工具（始终走确认流）"
+        },
+        "aiStudy.explainTarget": {
+          "type": "string",
+          "enum": [
+            "popover",
+            "conversation"
+          ],
+          "default": "popover",
+          "description": "划词「解释」结果展示位置：popover（页内弹层）/ conversation（发送到 Harness 对话）"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "copy-pdf-assets": "node scripts/copy-pdf-assets.js",
+    "compile": "npm run copy-pdf-assets && tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test out-test/test/",
+    "check": "npm run compile && npm test",
+    "package": "npm run compile && npx vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38"
+  },
+  "devDependencies": {
+    "@types/node": "20.x",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.2",
+    "typescript": "~5.7"
+  }
+}

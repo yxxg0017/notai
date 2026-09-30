@@ -1,0 +1,349 @@
+/* AI 学习助手 PDF 阅读器样式（webview；颜色跟随 VS Code 主题变量） */
+:root {
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 保证 hidden 属性优先于任何 display 声明 */
+[hidden] {
+  display: none !important;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------- 顶部工具栏 ---------- */
+#toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.06));
+  user-select: none;
+}
+
+#toolbar .icon-btn,
+#toolbar .text-btn,
+.error-box .text-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#toolbar .icon-btn {
+  padding: 2px 7px;
+  font-size: 15px;
+}
+
+#toolbar button:hover,
+.error-box button:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#page-input {
+  width: 3.5em;
+  text-align: center;
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+  background: var(--vscode-input-background, transparent);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+#page-total {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.separator {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+.filename {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* ---------- 画布区域 ---------- */
+#pdf-container {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  padding: 10px 0 24px;
+}
+
+.page-wrap {
+  position: relative;
+  width: 92%;
+  max-width: 1000px;
+  margin: 14px auto;
+  background: #ffffff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+
+.page-wrap canvas {
+  display: block;
+}
+
+/* pdf.js 文本层（透明文字撑起浏览器原生选择） */
+.page-wrap .textLayer {
+  position: absolute;
+  text-align: initial;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 2;
+}
+
+.page-wrap .textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+/* 扫描页（无文本层）提示条 */
+.scanned-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-editorInfo-background, rgba(77, 109, 174, 0.16));
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+.scanned-notice .manual-note-btn {
+  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.scanned-notice .manual-note-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.35));
+}
+
+/* ---------- 加载 / 错误占位 ---------- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  background: color-mix(in srgb, var(--vscode-editor-background) 82%, transparent);
+}
+
+#loading {
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+}
+
+.error-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 80%;
+  padding: 22px 30px;
+  border: 1px solid var(--vscode-inputValidation-errorBorder, rgba(190, 50, 50, 0.6));
+  border-radius: 8px;
+  background: var(--vscode-inputValidation-errorBackground, rgba(190, 50, 50, 0.12));
+}
+
+.error-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.error-message {
+  font-size: 12px;
+  color: var(--vscode-errorForeground);
+  word-break: break-all;
+  text-align: center;
+}
+
+/* ---------- 浮动工具栏（划词） ---------- */
+#floating-toolbar {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--vscode-menu-border, rgba(128, 128, 128, 0.4));
+  border-radius: 6px;
+  background: var(--vscode-menu-background, #2d2d2d);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+#floating-toolbar button {
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#floating-toolbar button:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.25));
+}
+
+/* ---------- 划词结果 popover（Task 5） ---------- */
+#result-popover {
+  position: fixed;
+  right: 14px;
+  top: 48px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 28px));
+  max-height: calc(100vh - 72px);
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.4));
+  border-radius: 8px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+#result-popover .result-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+#result-popover .result-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#result-popover .result-close {
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#result-popover .result-close:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.25));
+}
+
+#result-popover .result-body {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+
+#result-popover .result-body p {
+  margin: 0 0 8px;
+}
+
+#result-popover .result-body code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.92em;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.15));
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+#result-popover .result-body a {
+  color: var(--vscode-textLink-foreground);
+}
+
+#result-popover .result-actions {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+#result-popover .result-btn {
+  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  font-size: 12px;
+  padding: 3px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#result-popover .result-btn:not([disabled]):hover {
+  background: var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.35));
+}
+
+#result-popover .result-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

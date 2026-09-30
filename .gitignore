@@ -2,5 +2,9 @@ node_modules/
 out/
 out-test/
 *.vsix
-media/pdf/
+# 仅忽略 PDF.js 构建产物；media/pdf/viewer.html/js/css 为源文件，必须可提交
+media/pdf/pdf.min.mjs
+media/pdf/pdf.worker.min.mjs
+media/pdf/cmaps/
 .worktrees/
+

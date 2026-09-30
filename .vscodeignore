@@ -1,0 +1,15 @@
+# 源码与构建中间产物不进 vsix 包（out/ 与 media/ 中的运行资源保留）
+.gitignore
+.vscode/**
+.vscode-test/**
+.superpowers/**
+docs/**
+node_modules/**
+out-test/**
+scripts/**
+src/**
+test/**
+tsconfig.json
+tsconfig.test.json
+**/*.map
+**/*.ts

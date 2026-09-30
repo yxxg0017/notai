@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="{{CSP}}" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF 阅读器</title>
+  <link rel="stylesheet" href="{{VIEWER_CSS}}" />
+</head>
+<body>
+  <div id="app">
+    <header id="toolbar">
+      <button id="btn-prev" type="button" class="icon-btn" title="上一页" aria-label="上一页">‹</button>
+      <span class="page-nav">
+        <input id="page-input" type="number" min="1" value="1" aria-label="页码" />
+        <span id="page-total">/ 0</span>
+      </span>
+      <button id="btn-next" type="button" class="icon-btn" title="下一页" aria-label="下一页">›</button>
+      <span class="separator" aria-hidden="true"></span>
+      <button id="btn-zoom-out" type="button" class="icon-btn" title="缩小" aria-label="缩小">−</button>
+      <button id="btn-zoom-in" type="button" class="icon-btn" title="放大" aria-label="放大">＋</button>
+      <button id="btn-fit" type="button" class="text-btn" title="适配宽度" aria-label="适配宽度">适配宽度</button>
+      <span id="filename" class="filename" title=""></span>
+    </header>
+    <main id="pdf-container">
+      <div id="pages"></div>
+      <div id="loading" class="overlay" hidden>加载中…</div>
+      <div id="error-placeholder" class="overlay" hidden>
+        <div class="error-box">
+          <div class="error-title">无法打开 PDF</div>
+          <div id="error-message" class="error-message"></div>
+          <button id="btn-reload" type="button" class="text-btn">重新加载</button>
+        </div>
+      </div>
+    </main>
+    <div id="floating-toolbar" hidden>
+      <button type="button" data-action="translate">翻译</button>
+      <button type="button" data-action="explain">解释</button>
+      <button type="button" data-action="copy">复制</button>
+      <button type="button" data-action="note">加笔记</button>
+      <button type="button" data-action="wordbook">加单词本</button>
+    </div>
+    <div id="result-popover" hidden>
+      <div class="result-header">
+        <span id="result-title" class="result-title"></span>
+        <button id="result-close" type="button" class="result-close" title="关闭" aria-label="关闭">✕</button>
+      </div>
+      <div id="result-body" class="result-body"></div>
+      <div class="result-actions">
+        <button id="result-retry" type="button" class="result-btn" hidden>重试</button>
+        <button type="button" class="result-btn" data-result-action="note">加笔记</button>
+        <button type="button" class="result-btn" data-result-action="wordbook">加单词本</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="{{VIEWER_JS}}"></script>
+</body>
+</html>
