@@ -17,11 +17,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const config = loadConfig();
 
-  // PDF 阅读器：Custom Text Editor（选区/阅读位置在 pdfEditor 内实现）
+  // PDF 阅读器：Custom Text Editor（选区/阅读位置在 pdfEditor 内实现）。
+  // 不设 retainContextWhenHidden：默认行为下重载窗口不会触发 VS Code 对
+  // 自定义编辑器 webview 的 tryRevive（其 createModelReference 会把二进制
+  // PDF 当文本读取而弹 "Unable to open ... binary" 错误框）
   const pdfProvider = new PdfEditorProvider(context);
   subscriptions.push(
     vscode.window.registerCustomEditorProvider(PdfEditorProvider.viewType, pdfProvider, {
-      webviewOptions: { retainContextWhenHidden: true },
+      webviewOptions: {},
     }),
     pdfProvider
   );

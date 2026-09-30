@@ -27,10 +27,36 @@ window.addEventListener('unhandledrejection', (e) => {
 
 /* ---------------- pdf.js 运行时配置（相对本模块的 asWebviewUri 解析） ---------------- */
 const MODULE_BASE = new URL('.', import.meta.url);
-// 统一走主线程（fake worker）解析：webview 中 new Worker(moduleURL) / import(workerSrc)
-// 均不可靠——vscode-resource 动态导入受限报错，blob: module worker 存在「test 消息先于
-// onmessage 注册」的丢失竞态导致 getDocument 永不返回（挂死）。主线程解析慢一些但确定成功。
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.mjs', MODULE_BASE).href;
+
+/**
+ * 预创建 PDF.js worker 并经 workerPort 挂接：
+ * - pdf.worker.min.mjs 自包含（无相对 import），从 vscode-resource 拉取后封装为
+ *   blob:（同源；CSP worker-src blob: 放行），模块求值必然成功
+ * - pdf.js 经 workerPort 直接使用现成 worker，不经过其内部
+ *   new Worker/动态 import 回退链——该链与 workerSrc 运行时替换存在竞态
+ *   （曾致 getDocument 挂起或 "No workerSrc" 报错）
+ * - 失败时回退：workerSrc 设 vscode-resource URL（动态 import 受限，
+ *   pdf.js 自动落回主线程 fake worker，可正确解析）
+ */
+async function setupPdfWorker() {
+  try {
+    const resp = await fetch(new URL('pdf.worker.min.mjs', MODULE_BASE).href);
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    const blobUrl = URL.createObjectURL(
+      new Blob([await resp.text()], { type: 'text/javascript' }),
+    );
+    const worker = new Worker(blobUrl, { type: 'module' });
+    pdfjsLib.GlobalWorkerOptions.workerPort = worker;
+    diag('worker: workerPort ready');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    diag(`worker setup failed: ${msg}; 回退主线程解析`);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.mjs', MODULE_BASE).href;
+  }
+}
+void setupPdfWorker();
 const C_MAP_URL = new URL('cmaps/', MODULE_BASE).href;
 
 /* ---------------- 状态 ---------------- */
