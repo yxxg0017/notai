@@ -133,7 +133,14 @@ export class DeepSeekProvider implements LLMProvider {
       messages: req.messages,
       stream: true,
     };
-    if (req.tools && req.tools.length > 0) body.tools = req.tools;
+    if (req.tools && req.tools.length > 0) {
+      // DeepSeek（OpenAI 兼容）要求 tools 元素为 { type: 'function', function: {...} }；
+      // 内部 ToolDefinition 为 {name, description, parameters}，此处做线格式映射（HTTP 422 修复）
+      body.tools = req.tools.map((t) => ({
+        type: 'function',
+        function: { name: t.name, description: t.description, parameters: t.parameters },
+      }));
+    }
     if (req.temperature !== undefined) body.temperature = req.temperature;
 
     let res: Response;

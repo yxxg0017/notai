@@ -165,6 +165,50 @@ test('流中段 AbortError 映射为 network 且 retryable=false', async () => {
   );
 });
 
+test('tools 序列化为 OpenAI 兼容格式（type:function 包裹，HTTP 422 回归）', async () => {
+  const enc = new TextEncoder();
+  (globalThis as any).fetch = async (_url: string, init: any) => {
+    const reqBody = JSON.parse(init.body as string);
+    assert.deepStrictEqual(reqBody.tools, [
+      {
+        type: 'function',
+        function: {
+          name: 'read_file',
+          description: '读取文件',
+          parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'web_search',
+          description: '搜索',
+          parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+        },
+      },
+    ]);
+    const body = new ReadableStream({
+      start(c) {
+        c.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'));
+        c.enqueue(enc.encode('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'));
+        c.enqueue(enc.encode('data: [DONE]\n\n'));
+        c.close();
+      },
+    });
+    return { ok: true, status: 200, body } as any;
+  };
+  const p = new DeepSeekProvider(async () => 'sk-test', 'https://api.deepseek.com/v1', 'deepseek-chat');
+  const msg = await p.chat({
+    messages: [{ role: 'user', content: 'hi' }],
+    model: 'deepseek-chat',
+    tools: [
+      { name: 'read_file', description: '读取文件', parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
+      { name: 'web_search', description: '搜索', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+    ],
+  });
+  assert.strictEqual(msg.content, 'ok');
+});
+
 test('mapHttpError 5xx 一律不可重试', () => {
   assert.strictEqual(mapHttpError(503, '').retryable, false);
   assert.strictEqual(mapHttpError(500, '').retryable, false);
