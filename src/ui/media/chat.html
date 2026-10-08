@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nota 学习助手</title>
+<link rel="stylesheet" href="chat.css">
+</head>
+<body>
+
+<!-- ==================== 会话列表视图 (?view=session) ==================== -->
+<div id="session-view" class="view hidden">
+  <header class="session-header">
+    <span class="session-title">学习会话</span>
+    <button id="new-conversation-btn" class="primary-btn">＋ 新对话</button>
+  </header>
+  <div id="session-empty" class="session-empty hidden">暂无会话，点击右上角「＋ 新对话」开始</div>
+  <ul id="session-list" class="session-list"></ul>
+
+  <!-- 新对话模式选择弹层 -->
+  <div id="mode-modal" class="modal hidden">
+    <div class="modal-mask" id="mode-modal-mask"></div>
+    <div class="modal-body">
+      <div class="modal-title">选择对话模式</div>
+      <div class="mode-options">
+        <button class="mode-option" data-mode="chat">
+          <span class="mode-icon">💬</span>
+          <span class="mode-name">对话</span>
+          <span class="mode-desc">日常问答与学习辅导</span>
+        </button>
+        <button class="mode-option" data-mode="research">
+          <span class="mode-icon">🔎</span>
+          <span class="mode-name">研究</span>
+          <span class="mode-desc">联网检索深入研究</span>
+        </button>
+        <button class="mode-option" data-mode="quiz">
+          <span class="mode-icon">🎯</span>
+          <span class="mode-name">出题</span>
+          <span class="mode-desc">根据材料出题自测</span>
+        </button>
+      </div>
+      <button id="mode-cancel" class="link-btn">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 对话面板视图 (?view=chat) ==================== -->
+<div id="chat-view" class="view hidden">
+  <header class="chat-header">
+    <div class="chat-title" id="chat-title">新对话</div>
+    <div class="mode-tabs" id="mode-tabs">
+      <button class="mode-tab" data-mode="chat">💬 对话</button>
+      <button class="mode-tab" data-mode="research">🔎 研究</button>
+      <button class="mode-tab" data-mode="quiz">🎯 出题</button>
+    </div>
+  </header>
+
+  <main id="messages" class="messages">
+    <div id="chat-empty" class="chat-empty">开始你的第一次对话吧</div>
+  </main>
+
+  <footer class="composer">
+    <div id="attachment-chips" class="attachment-chips hidden"></div>
+    <div id="skill-chips" class="skill-chips"></div>
+    <div class="input-row">
+      <button id="attach-btn" class="icon-btn" title="添加附件">📎</button>
+      <textarea id="input" rows="1" placeholder="输入问题，Enter 发送，Shift+Enter 换行，Esc 清空"></textarea>
+      <select id="model-select" title="选择模型"></select>
+      <button id="send-btn" class="primary-btn">发送</button>
+    </div>
+  </footer>
+</div>
+
+<script src="chat.js"></script>
+</body>
+</html>
