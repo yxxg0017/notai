@@ -102,6 +102,7 @@ export function activate(context: vscode.ExtensionContext): void {
           kind: payload.kind,
           text: payload.text,
           markdown: payload.markdown,
+          content: payload.content,
           page,
           source: { uri, page },
           ...(payload.error !== undefined ? { error: true } : {}),
@@ -133,13 +134,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const runNoteAction = async (
     action: NoteAction,
     selection: PdfSelection,
+    content?: string,
   ): Promise<void> => {
     const source = pdfSourceFor(selection);
     try {
       if (action === 'note') {
-        await actions.addNote(selection.text, source);
+        // content：本次翻译/解释结果原文（加笔记正文带「原文+译文」，0.3 修复）
+        await actions.addNote(selection.text, source, content);
       } else {
-        await actions.addToWordBook(selection.text, source);
+        await actions.addToWordBook(selection.text, source, content);
       }
     } catch (err) {
       // 与 translate/explain 分支及编辑器路径一致：notesRoot 不可写等 FS 错误兜底为错误卡

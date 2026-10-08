@@ -32,6 +32,8 @@ interface ViewerInMessage {
   page?: number;
   text?: string;
   action?: ToolbarAction | NoteAction;
+  /** note-action 随带的本次结果原文（「加笔记/加单词本」上下文，0.3 修复） */
+  content?: string;
   message?: string;
 }
 
@@ -60,6 +62,7 @@ interface PdfOpenMessage {
 /**
  * extension -> viewer 消息：划词结果（broadcastToPdf 发送）。
  * `markdown` 为 renderSimpleMarkdown 已渲染的安全 HTML 片段，viewer 直接 innerHTML。
+ * `content` 为原始 LLM 输出（「加笔记/加单词本」上下文）。
  * `error` 存在时 viewer 在 popover 内显示「重试」按钮（重新走 toolbar-action 回传）。
  */
 export interface PdfResultMessage {
@@ -68,6 +71,8 @@ export interface PdfResultMessage {
   /** 源选区文本（viewer 重试时回传） */
   text: string;
   markdown: string;
+  /** 原始 LLM 输出（未渲染；「加笔记/加单词本」随注，0.3 修复） */
+  content?: string;
   page: number;
   source: { uri: string; page: number };
   error?: boolean;
@@ -100,7 +105,9 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
   /** toolbar-action 动作处理器（由 extension.ts 注入，Task 5 接线；note 亦在此路由） */
   private actionHandler: ((action: ToolbarAction, selection: PdfSelection) => void) | undefined;
   /** note-action 处理器（viewer「加笔记/加单词本」→ SelectionActions，Task 6 接线） */
-  private noteActionHandler: ((action: NoteAction, selection: PdfSelection) => void) | undefined;
+  private noteActionHandler:
+    | ((action: NoteAction, selection: PdfSelection, content?: string) => void)
+    | undefined;
   private readonly output: vscode.OutputChannel;
 
   public constructor(
@@ -152,7 +159,7 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
 
   /** 注入「加笔记/加单词本」处理器（viewer note-action 消息 → SelectionActions，Task 6 接线） */
   public setNoteActionHandler(
-    handler: (action: NoteAction, selection: PdfSelection) => void,
+    handler: (action: NoteAction, selection: PdfSelection, content?: string) => void,
   ): void {
     this.noteActionHandler = handler;
   }
@@ -359,7 +366,7 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
         );
         const action = message.action;
         if (this.noteActionHandler && (action === 'note' || action === 'wordbook')) {
-          this.noteActionHandler(action, selection);
+          this.noteActionHandler(action, selection, message.content);
         }
         break;
       }

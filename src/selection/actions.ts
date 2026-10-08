@@ -27,6 +27,8 @@ export interface ShowResultPayload {
   text: string;
   /** renderSimpleMarkdown 输出（流式时是当前累积全文；错误卡时为错误文案） */
   markdown: string;
+  /** 原始 LLM 输出（未渲染 markdown；「加笔记/加单词本」当次结果上下文，0.3 修复） */
+  content?: string;
   source?: SelectionSource;
   page?: number;
   /** 重新执行本动作（错误卡「重试」按钮/提示使用；无参调用，重新流式渲染） */
@@ -80,12 +82,14 @@ export class SelectionActions {
   }
 
   /**
-   * 加笔记：确认标题（预填来源名，取消则中止）→ 一文档一笔记续写（`## 手动笔记` 块）
-   * → `ViewColumn.Beside` 分屏打开 → 光标置于文件末尾续写区 → 提示。
+   * 加笔记：确认标题（预填来源名，取消则中止）→ 一文档一笔记续写（`## 手动笔记` 块，
+   * 有本次翻译结果时正文 = 原文 + 译文全文）→ `ViewColumn.Beside` 分屏打开
+   * → 光标置于文件末尾续写区 → 提示。
    *
+   * @param content 本次动作的原始 LLM 输出（翻译结果；缺省回退仅原文）
    * @returns true = 已打开笔记；false = 用户取消标题输入
    */
-  async addNote(text: string, source: SourceInfo): Promise<boolean> {
+  async addNote(text: string, source: SourceInfo, content?: string): Promise<boolean> {
     const title = await vscode.window.showInputBox({
       prompt: '笔记标题',
       value: source.displayName,
@@ -93,11 +97,12 @@ export class SelectionActions {
     if (title === undefined) {
       return false; // 用户取消
     }
+    const body = content ? `**原文**：${text}\n\n${content}` : text;
     const { noteService } = this.deps;
     const { notePath } = await noteService.openOrCreate(source, {
       // 输入框编辑值生效：写入 frontmatter title（空串/纯空白回退来源名；文件名仍由来源派生）
       titleOverride: title,
-      headings: [{ heading: '手动笔记', body: text }],
+      headings: [{ heading: '手动笔记', body }],
     });
     const doc = await vscode.window.showTextDocument(vscode.Uri.file(notePath), {
       viewColumn: vscode.ViewColumn.Beside,
@@ -112,19 +117,23 @@ export class SelectionActions {
   }
 
   /**
-   * 加单词本：输入翻译（允许留空，取消则中止）→ 追加到全局唯一单词本
-   * （word = 文本首词，整段截断 50 字；source = 来源名；date = 今日）→ 提示。
+   * 加单词本：输入翻译（预填本次翻译结果的「译文」行，可编辑，取消则中止）
+   * → 追加到全局唯一单词本（word = 文本首词，整段截断 50 字；source = 来源名；date = 今日）→ 提示。
    *
+   * @param content 本次动作的原始 LLM 输出（提取「译文」行预填；0.3 修复：此前只能加单词没翻译）
    * @returns true = 已加入单词本；false = 用户取消翻译输入
    */
-  async addToWordBook(text: string, source: SourceInfo): Promise<boolean> {
-    const translation = await vscode.window.showInputBox({ prompt: '翻译', value: '' });
+  async addToWordBook(text: string, source: SourceInfo, content?: string): Promise<boolean> {
+    const translation = await vscode.window.showInputBox({
+      prompt: '翻译',
+      value: content ? extractTranslation(content) : '',
+    });
     if (translation === undefined) {
       return false; // 用户取消
     }
     await this.deps.wordBook.addEntry({
       word: firstToken(text, 50),
-      translation,
+      translation: translation.trim(),
       source: source.displayName,
       date: localDateString(),
     });
@@ -156,6 +165,8 @@ export class SelectionActions {
         kind,
         text: safe,
         markdown,
+        // 原始 LLM 输出随渲染一并上送（「加笔记/加单词本」上下文；流式时是当前累积）
+        content: accumulated,
         source,
         page: source?.page,
         retry,
@@ -227,6 +238,15 @@ export class SelectionActions {
 /** 文本首词（空白分隔第一段），超长截断到 max 字符（单词本词条用） */
 function firstToken(text: string, max: number): string {
   return (text.trim().split(/\s+/)[0] ?? '').slice(0, max);
+}
+
+/**
+ * 从翻译结果原文提取「译文：…」行内容（加单词本预填用）。
+ * 兼容 `**译文：** xxx`（markdown 源）与 `译文：xxx` 两种形态；提取失败回退整段。
+ */
+function extractTranslation(raw: string): string {
+  const m = String(raw ?? '').match(/译文\s*[：:]\s*([^\n*]+)/);
+  return m ? m[1].trim() : String(raw ?? '').trim();
 }
 
 /** 今日本地日期字符串（YYYY-MM-DD；用本地时区而非 toISOString 的 UTC） */

@@ -522,8 +522,9 @@ function showResultPopover(msg) {
   state.retryCtx = isError
     ? { action: msg.kind, text: msg.text, page: msg.page }
     : null;
-  // 「加笔记/加单词本」使用结果的来源选区（与重试同源：popover 展示的源文本）
-  state.resultCtx = { text: msg.text, page: msg.page };
+  // 「加笔记/加单词本」使用结果的来源选区（与重试同源：popover 展示的源文本）；
+  // content 为本次结果原文（「加笔记/加单词本」带翻译，0.3 修复）
+  state.resultCtx = { text: msg.text, page: msg.page, content: msg.content };
   resultPopover.hidden = false;
 }
 
@@ -558,6 +559,7 @@ resultPopover.querySelector('.result-actions').addEventListener('click', (e) => 
     action: btn.dataset.resultAction,
     text: ctx.text,
     page: ctx.page,
+    content: ctx.content,   // 结果原文（带翻译上下文）
   });
 });
 
