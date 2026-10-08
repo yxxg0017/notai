@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { SecretStore, loadConfig } from './config';
 import { DeepSeekProvider } from './core/llm/deepseek';
+import { chatWithRetry } from './core/llm/retry';
+import type { LLMProvider } from './core/llm/types';
 import { ConversationStore } from './core/agent/store';
 import { PdfEditorProvider } from './pdf/pdfEditor';
 import type { ToolbarAction, NoteAction, PdfSelection } from './pdf/pdfEditor';
@@ -40,6 +42,14 @@ export function activate(context: vscode.ExtensionContext): void {
     config.baseUrl,
     config.model,
   );
+  /**
+   * 装饰器式包装：所有 LLM 调用（ChatController 的 runTurn 与 SelectionActions 的
+   * 划词翻译/解释）统一走 429 指数退避重试；provider 内部（loop.ts/actions.ts）不改。
+   */
+  const retryProvider: LLMProvider = {
+    ...provider,
+    chat: (req) => chatWithRetry(provider, req),
+  };
   /** 笔记服务（划词动作与 Harness 控制器共用同一实例，notesRoot 同源） */
   const notes = new NoteService(config.notesRoot);
 
@@ -51,7 +61,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const harnessSink = new HarnessSink();
   const controller = new ChatController({
     store,
-    provider,
+    provider: retryProvider,
     config,
     notes,
     // webSearchKey 接 SecretStore（Task 9 接线；无 Key 时 controller 侧降级为仅本地检索）
@@ -80,7 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
   let pdfTarget: { uri: string; page: number } | undefined;
 
   const actions = new SelectionActions({
-    provider,
+    provider: retryProvider,
     config,
     getPdfSelection: () => pdfProvider.getCurrentSelection(),
     onShowResult: (payload: ShowResultPayload) => {

@@ -664,6 +664,8 @@ export class ChatController {
       // 与 runTurn 的 workspace 工具注册同一谓词（enabled && cwd && !untrusted），
       // 避免前端「已启用」显示与工具注册不一致
       workspaceWriteEnabled: this.workspaceWriteEnabled,
+      // 未信任工作区提示（chat.js 顶部提示条；与 workspace 工具门控同源）
+      untrustedWorkspace: this.deps.workspace.untrusted,
     };
   }
 
@@ -704,6 +706,11 @@ export class ChatController {
         break;
       case 'confirmWorkspace':
         this.handleConfirm(msg.conversationId, msg.accept);
+        break;
+      case 'abort':
+        // Task 10 minor ③：前端「停止」按钮已发送 {type:'abort'} 但控制器未处理
+        // （ChatController.abort 为死代码）；补线后中止流式/挂起确认均生效
+        this.abort(msg.conversationId);
         break;
       case 'send':
         await this.send(msg.conversationId, msg.text, msg.attachments ?? []);

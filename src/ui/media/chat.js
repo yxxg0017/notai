@@ -27,6 +27,7 @@
     skills: [],              // {id, displayName, description, defaultOn, icon?}
     webSearchAvailable: false,  // init 前按不可用兜底（所有 defaultSkillIds 调用点均在 init 之后）
     workspaceWriteEnabled: false,
+    untrustedWorkspace: false,   // 未信任工作区（init 载荷；true 时显示「受限工作区」提示条）
     convId: null,            // 当前打开的会话 id
     convTitle: '',
     mode: 'chat',            // 当前会话模式
@@ -95,6 +96,7 @@
     $('session-view').classList.toggle('hidden', v !== 'session');
     $('chat-view').classList.toggle('hidden', v !== 'chat');
     updateWebSearchBanner();
+    updateUntrustedBanner();
   }
 
   /* ---------------- 会话列表视图 ---------------- */
@@ -261,6 +263,14 @@
     banner.classList.toggle('hidden', !show);
   }
 
+  /** 输入区上方提示条：未信任工作区时显示「受限工作区：仅只读与笔记库」（样式参照 websearch-banner；
+   *  init 重推时由 onMessage('init') 更新，切换会话时 renderConversation 同步） */
+  function updateUntrustedBanner() {
+    var banner = $('untrusted-banner');
+    if (!banner) return;
+    banner.classList.toggle('hidden', !state.untrustedWorkspace);
+  }
+
   function scrollBottom() {
     var box = $('messages');
     box.scrollTop = box.scrollHeight;
@@ -340,11 +350,27 @@
     return { card: card, statusEl: statusEl, resultEl: resultEl };
   }
 
+  /**
+   * 错误卡统一路由（Task 11，按 kind 而非 retryable 判定）：
+   * - noApiKey → 未配置 API Key 文案 + [去配置]（post openSettings）
+   * - rateLimit / network → 文案 + [重试]（post retry；network 的 retryable 为 false 但同样可重试）
+   * - contextLength → 「上下文过长，请精简或新建会话」+ [新建会话]（继承当前会话 mode/model/skillIds）
+   * - 其余（unknown 等）→ message 原文；retryable 为 true 时兜底 [重试]
+   */
   function addErrorMsg(kind, message, retryable) {
     removeEmptyHint();
     var div = el('div', 'msg-error');
-    div.appendChild(el('span', 'error-text', '⚠ ' + message + (kind ? '（' + kind + '）' : '')));
-    if (retryable) {
+    if (kind === 'noApiKey') {
+      div.appendChild(el('span', 'error-text', '⚠ ' + message));
+    } else if (kind === 'contextLength') {
+      div.appendChild(el('span', 'error-text', '⚠ 上下文过长，请精简或新建会话'));
+    } else {
+      div.appendChild(el('span', 'error-text', '⚠ ' + message + (kind ? '（' + kind + '）' : '')));
+    }
+    var canRetry =
+      kind === 'rateLimit' || kind === 'network' ||
+      (retryable && kind !== 'noApiKey' && kind !== 'contextLength');
+    if (canRetry) {
       var retry = el('button', '', '重试');
       retry.addEventListener('click', function () {
         if (!state.convId) return;
@@ -353,12 +379,28 @@
       });
       div.appendChild(retry);
     }
-    var cfg = el('button', '', '去配置');
-    cfg.addEventListener('click', function () {
-      post({ type: 'openSettings' });
-      div.remove();
-    });
-    div.appendChild(cfg);
+    if (kind === 'noApiKey') {
+      var cfg = el('button', '', '去配置');
+      cfg.addEventListener('click', function () {
+        post({ type: 'openSettings' });
+        div.remove();
+      });
+      div.appendChild(cfg);
+    }
+    if (kind === 'contextLength') {
+      var newConv = el('button', '', '新建会话');
+      newConv.addEventListener('click', function () {
+        if (!state.convId) return;
+        post({
+          type: 'newConversation',
+          mode: state.mode,
+          model: getConvModel() || state.pendingModel,
+          skillIds: state.activeSkills.slice()
+        });
+        div.remove();
+      });
+      div.appendChild(newConv);
+    }
     $('messages').appendChild(div);
     scrollBottom();
   }
@@ -521,6 +563,7 @@
     });
     scrollBottom();
     updateWebSearchBanner();
+    updateUntrustedBanner();
   }
 
   /* ---- 会话列表缓存维护 ---- */
@@ -597,10 +640,12 @@
         state.skills = data.skills || [];
         state.webSearchAvailable = data.webSearchAvailable !== false;
         state.workspaceWriteEnabled = !!data.workspaceWriteEnabled;
+        state.untrustedWorkspace = !!data.untrustedWorkspace;
         renderSessions();
         populateModelSelect();
         renderSkillChips();
         updateWebSearchBanner();
+        updateUntrustedBanner();
         break;
 
       case 'conversation':

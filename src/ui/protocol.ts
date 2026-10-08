@@ -54,6 +54,8 @@ export type UiOut =
       skills: { id: string; displayName: string; description: string; defaultOn: boolean; icon?: string }[];
       webSearchAvailable: boolean;
       workspaceWriteEnabled: boolean;
+      /** 未信任工作区：前端在输入区上方显示「受限工作区」提示条（true 显示，init 重推时更新） */
+      untrustedWorkspace: boolean;
     }
   | { type: 'conversation'; conv: Conversation }
   | { type: 'delta'; conversationId: string; delta: Delta }

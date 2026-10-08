@@ -96,8 +96,12 @@ async function execEditWorkspaceFile(
   let currentContent = '';
   try {
     currentContent = await fs.promises.readFile(target, 'utf8');
-  } catch {
-    currentContent = '';
+  } catch (err) {
+    // Task 10 minor ⑤：仅 ENOENT（目标不存在，新建）置空；其余读取错误（权限/目录等）
+    // 如实上抛为 ToolError，避免「读不到却显示为空」的确认卡误导整文件覆盖
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      throw new ToolError(`读取 ${rel} 失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   const accepted = await ctx.confirmWorkspaceWrite({
     path: rel,
