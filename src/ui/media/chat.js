@@ -25,7 +25,7 @@
     sessions: [],            // ConversationMeta[]
     models: [],
     skills: [],              // {id, displayName, description, defaultOn, icon?}
-    webSearchAvailable: true,
+    webSearchAvailable: false,  // init 前按不可用兜底（所有 defaultSkillIds 调用点均在 init 之后）
     workspaceWriteEnabled: false,
     convId: null,            // 当前打开的会话 id
     convTitle: '',
@@ -78,9 +78,14 @@
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + hm;
   }
 
-  /** 与 Task 3 defaultSkillIds 对齐：research→[search]，quiz→[quiz]，chat→defaultOn 集合 */
+  /**
+   * 与 Task 3 defaultSkillIds 对齐，但 research 默认值 web 感知（与控制器 defaultSkillsFor 语义一致）：
+   * web 可用 → ['search']；不可用 → []（避免「search 启用但 web_search 未注册」作为默认态）。
+   * 调用点（onNewConversation/模式 tab）均为 init 之后用户交互，state.webSearchAvailable 已就绪；
+   * 初始值兜底为 false（不可用），见 state 定义。
+   */
   function defaultSkillIds(mode) {
-    if (mode === 'research') return ['search'];
+    if (mode === 'research') return state.webSearchAvailable ? ['search'] : [];
     if (mode === 'quiz') return ['quiz'];
     return state.skills.filter(function (s) { return s.defaultOn; }).map(function (s) { return s.id; });
   }

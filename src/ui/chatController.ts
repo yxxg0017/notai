@@ -333,14 +333,17 @@ export class ChatController {
     skillIds?: string[],
   ): Promise<Conversation> {
     const now = Date.now();
+    // 防御：显式传入的 skillIds 在 web 不可用时同样剔除 'search'（与前端 defaultSkillIds 对齐，
+    // 防止「search 启用但 web_search 未注册」作为默认态落库；无参时走 defaultSkillIds 统一处理）
+    const webAvailable = !!(await this.webHandler());
+    const baseSkills = skillIds && skillIds.length > 0 ? [...skillIds] : defaultSkillIds(mode);
     const conv: Conversation = {
       id: randomUUID().replace(/-/g, ''),
       title: '新对话',
       mode,
       model: model || this.deps.config.model,
       provider: this.deps.provider.name,
-      // 无参兜底走 web 可用性感知的默认值（web 不可用时剔除 search，与前端 defaultOn 对齐）
-      skillIds: skillIds && skillIds.length > 0 ? [...skillIds] : await this.defaultSkillsFor(mode),
+      skillIds: this.applyWebAvailability(baseSkills, webAvailable),
       messages: [],
       createdAt: now,
       updatedAt: now,
@@ -714,6 +717,11 @@ export class ChatController {
     return webSearchTool(provider);
   }
 
+  /** 应用 web 可用性：不可用时剔除 'search'（防止「skill 启用但 web_search 未注册」） */
+  private applyWebAvailability(ids: string[], webAvailable: boolean): string[] {
+    return webAvailable ? ids : ids.filter((id) => id !== 'search');
+  }
+
   /**
    * 默认 Skill id 列表（web 可用性感知）：`defaultSkillIds(mode)` 的结果在 web 搜索
    * 不可用（provider=none 或无 Key）时剔除 'search'，避免「skill 启用但 web_search
@@ -721,11 +729,7 @@ export class ChatController {
    * 有 Key 时行为与 defaultSkillIds 一致（research 默认含 search）。
    */
   private async defaultSkillsFor(mode: ConversationMode): Promise<string[]> {
-    const ids = defaultSkillIds(mode);
-    if (await this.webHandler()) {
-      return ids;
-    }
-    return ids.filter((id) => id !== 'search');
+    return this.applyWebAvailability(defaultSkillIds(mode), !!(await this.webHandler()));
   }
 
   /** 驱动一轮 agent 循环：工具装配 → 流式推送 → 落盘 → 收尾消息 */
