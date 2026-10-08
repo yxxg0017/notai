@@ -25,10 +25,11 @@ import type {
 import { builtinSkills, defaultSkillIds } from '../core/skills/builtin';
 import { readTools, resolveWithin, ToolError } from '../core/tools/readTools';
 import { noteTools } from '../core/tools/noteTools';
+import { workspaceTools } from '../core/tools/workspaceTools';
 import { webSearchTool } from '../core/tools/webSearchTool';
 import { TavilyProvider } from '../core/search/tavily';
 import { BochaProvider } from '../core/search/bocha';
-import type { LocalHit, ToolContext, ToolHandler } from '../core/tools/context';
+import type { LocalHit, ToolContext, ToolHandler, WorkspaceProposal } from '../core/tools/context';
 import { parseFrontmatter } from '../notes/frontmatter';
 import type { NoteService, SourceInfo } from '../notes/noteService';
 import type { AppConfig } from '../config';
@@ -303,8 +304,11 @@ export class ChatController {
   private readonly noteHandlers: ToolHandler[];
   /** 会话 id → 进行中请求的中止控制器 */
   private readonly activeAbort = new Map<string, AbortController>();
-  /** 会话 id → 工作区写确认的 resolve（confirmWorkspaceWrite 于 Task 10 接入后使用） */
-  private readonly pendingConfirms = new Map<string, (accept: boolean) => void>();
+  /** 会话 id → 工作区写确认的挂起项（confirmWorkspaceWrite 于 Task 10 接入） */
+  private readonly pendingConfirms = new Map<
+    string,
+    { resolve: (accept: boolean) => void; reject: (err: Error) => void }
+  >();
   /** 会话 id → 最近一次用户输入（retry 重发用；仅内存，重启后回落到历史消息） */
   private readonly lastInputs = new Map<string, { text: string; attachments: UiAttachment[] }>();
   /** 「解释到会话」复用的 chat 会话 id */
@@ -377,8 +381,14 @@ export class ChatController {
   async remove(id: string): Promise<void> {
     this.activeAbort.get(id)?.abort();
     this.activeAbort.delete(id);
+    // 挂起确认先 reject 再 delete：避免确认 promise 永不 settle（工具侧感知为「已取消」）
+    const pending = this.pendingConfirms.get(id);
+    if (pending) {
+      this.pendingConfirms.delete(id);
+      pending.reject(new ToolError('已取消'));
+      this.deps.postToChat({ type: 'confirmResolved', conversationId: id, accepted: false });
+    }
     this.lastInputs.delete(id);
-    this.pendingConfirms.delete(id);
     await this.deps.store.remove(id);
     await this.refreshSessions();
   }
@@ -422,14 +432,35 @@ export class ChatController {
     })();
   }
 
-  /** resolve 挂起的工作区写确认（confirmWorkspaceWrite 于 Task 10 接入，本任务无挂起项） */
+  /**
+   * 生成某会话的工作区写确认请求器：挂起项入表 + postToChat(confirmRequest) 推确认卡。
+   * 确认期间同一会话只有一张卡：已有挂起项时先 resolve 前一张为 false（拒绝旧请求），
+   * 工具侧返回「用户已拒绝写入」。settle 路径：handleConfirm resolve / abort、remove、
+   * 新确认请求触发前一张 reject。
+   */
+  private confirmRequester(conversationId: string): (proposal: WorkspaceProposal) => Promise<boolean> {
+    return (proposal: WorkspaceProposal) =>
+      new Promise<boolean>((resolve, reject) => {
+        const prev = this.pendingConfirms.get(conversationId);
+        if (prev) {
+          this.pendingConfirms.delete(conversationId);
+          prev.resolve(false);
+          this.deps.postToChat({ type: 'confirmResolved', conversationId, accepted: false });
+        }
+        this.pendingConfirms.set(conversationId, { resolve, reject });
+        this.deps.postToChat({ type: 'confirmRequest', conversationId, proposal });
+      });
+  }
+
+  /** resolve 挂起的工作区写确认（确认卡 [应用]/[拒绝]；并发新确认会先拒绝旧请求） */
   handleConfirm(conversationId: string, accept: boolean): void {
-    const resolve = this.pendingConfirms.get(conversationId);
-    if (!resolve) {
+    const pending = this.pendingConfirms.get(conversationId);
+    if (!pending) {
       return;
     }
     this.pendingConfirms.delete(conversationId);
-    resolve(accept);
+    pending.resolve(accept);
+    this.deps.postToChat({ type: 'confirmResolved', conversationId, accepted: accept });
   }
 
   // ---- 发送与循环 ----
@@ -475,6 +506,13 @@ export class ChatController {
   }
 
   abort(conversationId: string): void {
+    // 挂起的工作区写确认：先 reject（工具侧抛「已取消」），保留既有 activeAbort 逻辑
+    const pending = this.pendingConfirms.get(conversationId);
+    if (pending) {
+      this.pendingConfirms.delete(conversationId);
+      pending.reject(new ToolError('已取消'));
+      this.deps.postToChat({ type: 'confirmResolved', conversationId, accepted: false });
+    }
     this.activeAbort.get(conversationId)?.abort();
   }
 
@@ -623,8 +661,9 @@ export class ChatController {
         ...(s.icon ? { icon: s.icon } : {}),
       })),
       webSearchAvailable,
-      workspaceWriteEnabled:
-        this.deps.workspace.enabled && !!this.deps.workspace.cwd && !this.deps.workspace.untrusted,
+      // 与 runTurn 的 workspace 工具注册同一谓词（enabled && cwd && !untrusted），
+      // 避免前端「已启用」显示与工具注册不一致
+      workspaceWriteEnabled: this.workspaceWriteEnabled,
     };
   }
 
@@ -699,6 +738,11 @@ export class ChatController {
 
   // ---- 内部 ----
 
+  /** 工作区写可用性谓词：init 载荷 workspaceWriteEnabled 与 runTurn 工具注册共用（单一出处） */
+  private get workspaceWriteEnabled(): boolean {
+    return this.deps.workspace.enabled && !!this.deps.workspace.cwd && !this.deps.workspace.untrusted;
+  }
+
   /**
    * 网页搜索工具装配：`webSearchProvider === 'none'` 或无 Key 时返回 undefined
    * （不注册 web_search；research 模式退化为仅本地检索），否则按配置选
@@ -756,9 +800,15 @@ export class ChatController {
           notes: this.noteHandlers,
           // web_search 按配置/Key 装配：provider 为 none 或无 Key 时不注册（research 模式仅本地检索）
           web: await this.webHandler(),
-          workspace: [], // Task 10/11 门控点：enableWorkspaceWrite && cwd && !untrusted 时并入
+          // Task 10 门控：enableWorkspaceWrite && cwd && !untrusted 才注册工作区写工具
+          workspace: this.workspaceWriteEnabled ? workspaceTools() : [],
         }),
-        ctx: { ...this.toolContext, signal: abort.signal },
+        ctx: {
+          ...this.toolContext,
+          signal: abort.signal,
+          // 工作区写确认：挂起表入表 + confirmRequest 推送（handleConfirm/abort/remove 驱动 settle）
+          confirmWorkspaceWrite: (proposal) => this.confirmRequester(conv.id)(proposal),
+        },
         maxSteps: this.deps.config.maxSteps,
         signal: abort.signal,
         hooks: {
