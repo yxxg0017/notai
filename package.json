@@ -78,6 +78,10 @@
         "title": "AI 学习: AI 搜索选中内容"
       },
       {
+        "command": "aiStudy.openWordBook",
+        "title": "AI 学习: 打开单词本"
+      },
+      {
         "command": "aiStudy.setApiKey",
         "title": "AI 学习: 设置 API Key"
       }

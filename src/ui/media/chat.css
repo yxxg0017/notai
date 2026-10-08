@@ -47,6 +47,22 @@ body {
   background: var(--vscode-button-hoverBackground);
 }
 
+.secondary-btn {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-button-border, rgba(128, 128, 128, 0.35));
+  border-radius: 3px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.secondary-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
 .link-btn {
   background: none;
   border: none;
@@ -81,9 +97,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
   flex-shrink: 0;
+}
+
+.session-header-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .session-title {
@@ -287,31 +310,6 @@ body {
   max-width: 45%;
 }
 
-.mode-tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.mode-tab {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--vscode-descriptionForeground);
-  border-radius: 4px;
-  padding: 3px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.mode-tab:hover {
-  background: var(--vscode-list-hoverBackground);
-}
-
-.mode-tab.active {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
 .messages {
   flex: 1;
   overflow-y: auto;
@@ -347,6 +345,47 @@ body {
   font-size: 10px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.22);
+}
+
+/* 消息悬浮功能栏（0.3）：hover 消息时显示 复制 / Fork / 回溯 */
+.msg-actions {
+  display: none;
+  gap: 4px;
+  margin-top: 5px;
+  justify-content: flex-end;
+}
+
+.msg-user:hover .msg-actions,
+.msg-assistant:hover .msg-actions {
+  display: flex;
+}
+
+.msg-actions button {
+  background: none;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  color: var(--vscode-descriptionForeground);
+  border-radius: 3px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1.5;
+}
+
+.msg-actions button:hover {
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-focusBorder, var(--vscode-button-background));
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* 用户气泡为实底按钮色：功能栏按钮用气泡自身前景色保证可读性 */
+.msg-user .msg-actions button {
+  color: var(--vscode-button-foreground);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.msg-user .msg-actions button:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 /* assistant 气泡（左侧） */
@@ -734,39 +773,70 @@ body {
   line-height: 1;
 }
 
-.skill-chips {
+/* 功能勾选配置（0.3：原 skill 胶囊行合并为「⚙ 功能」+ 展开的复选框面板） */
+.skill-picker {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.skill-chip {
-  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 2px 10px;
-  border-radius: 12px;
-  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
-  background: transparent;
-  color: var(--vscode-descriptionForeground);
-  cursor: pointer;
-  font-family: inherit;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.skill-chip:hover {
+.skill-summary {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+  padding: 6px 10px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.skill-panel.hidden {
+  display: none;
+}
+
+.skill-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.skill-option:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
-.skill-chip.active {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  border-color: var(--vscode-button-background);
+.skill-option input[type='checkbox'] {
+  flex-shrink: 0;
+  cursor: pointer;
 }
 
-.skill-chip:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.skill-opt-name {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.skill-opt-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .input-row {
@@ -794,7 +864,8 @@ body {
   border-color: var(--vscode-focusBorder, var(--vscode-button-background));
 }
 
-#model-select {
+#model-select,
+#mode-select {
   background: var(--vscode-dropdown-background);
   color: var(--vscode-dropdown-foreground);
   border: 1px solid var(--vscode-dropdown-border, rgba(128, 128, 128, 0.35));
@@ -804,4 +875,9 @@ body {
   font-family: inherit;
   max-width: 140px;
   cursor: pointer;
+}
+
+#mode-select {
+  max-width: 110px;
+  flex-shrink: 0;
 }

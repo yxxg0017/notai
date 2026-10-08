@@ -43,7 +43,13 @@ export type UiIn =
   | { type: 'requestPageText' }
   | { type: 'pickAttachment' }
   // openNote：Task 9 已接线（controller 打开笔记、前端 noteSaved 的 [打开笔记] 按钮发送）
-  | { type: 'openNote'; path: string };
+  | { type: 'openNote'; path: string }
+  /** 侧边栏「打开单词本」：扩展侧确保文件存在并打开（0.3） */
+  | { type: 'openWordBook' }
+  /** 消息悬浮栏 Fork：以该条 assistant 消息为终点派生新会话（历史含该条，原会话不动） */
+  | { type: 'fork'; conversationId: string; messageTs: number }
+  /** 消息悬浮栏回溯：截断到该条 user 消息（含）并自动重发该条（附件不重发） */
+  | { type: 'rewind'; conversationId: string; messageTs: number };
 
 /** 扩展侧 → webview 的消息 */
 export type UiOut =
@@ -59,7 +65,8 @@ export type UiOut =
     }
   | { type: 'conversation'; conv: Conversation }
   | { type: 'delta'; conversationId: string; delta: Delta }
-  | { type: 'finalize'; conversationId: string; messageId: string; html: string }
+  /** ts：该条 assistant 消息时间戳（悬浮栏 Fork 定位用，0.3 增补） */
+  | { type: 'finalize'; conversationId: string; messageId: string; ts: number; html: string }
   | { type: 'toolLifecycle'; conversationId: string; callId: string; name: string; status: 'running' | 'done' | 'error'; result?: string }
   | { type: 'error'; conversationId: string; kind: string; message: string; retryable: boolean }
   | { type: 'confirmRequest'; conversationId: string; proposal: WorkspaceProposal }

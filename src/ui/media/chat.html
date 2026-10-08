@@ -12,7 +12,10 @@
 <div id="session-view" class="view hidden">
   <header class="session-header">
     <span class="session-title">学习会话</span>
-    <button id="new-conversation-btn" class="primary-btn">＋ 新对话</button>
+    <div class="session-header-btns">
+      <button id="open-wordbook-btn" class="secondary-btn" title="打开单词本">📖 单词本</button>
+      <button id="new-conversation-btn" class="primary-btn">＋ 新对话</button>
+    </div>
   </header>
   <div id="session-empty" class="session-empty hidden">暂无会话，点击右上角「＋ 新对话」开始</div>
   <ul id="session-list" class="session-list"></ul>
@@ -48,11 +51,6 @@
 <div id="chat-view" class="view hidden">
   <header class="chat-header">
     <div class="chat-title" id="chat-title">新对话</div>
-    <div class="mode-tabs" id="mode-tabs">
-      <button class="mode-tab" data-mode="chat">💬 对话</button>
-      <button class="mode-tab" data-mode="research">🔎 研究</button>
-      <button class="mode-tab" data-mode="quiz">🎯 出题</button>
-    </div>
   </header>
 
   <main id="messages" class="messages">
@@ -63,13 +61,19 @@
     <div id="untrusted-banner" class="websearch-banner hidden">受限工作区：仅只读与笔记库</div>
     <div id="websearch-banner" class="websearch-banner hidden">未配置网页搜索，仅本地检索</div>
     <div id="attachment-chips" class="attachment-chips hidden"></div>
-    <div id="skill-chips" class="skill-chips"></div>
     <div class="input-row">
       <button id="attach-btn" class="icon-btn" title="添加附件">📎</button>
       <textarea id="input" rows="1" placeholder="输入问题，Enter 发送，Shift+Enter 换行，Esc 清空"></textarea>
+      <select id="mode-select" title="对话模式"></select>
       <select id="model-select" title="选择模型"></select>
       <button id="send-btn" class="primary-btn">发送</button>
     </div>
+    <div class="skill-picker">
+      <button id="skill-toggle" class="icon-btn" title="功能配置">⚙ 功能</button>
+      <span id="skill-summary" class="skill-summary"></span>
+      <span id="skill-panel-hint" class="skill-panel-hint">展开配置当前对话启用的功能</span>
+    </div>
+    <div id="skill-panel" class="skill-panel hidden"></div>
   </footer>
 </div>
 

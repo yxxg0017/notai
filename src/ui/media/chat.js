@@ -190,11 +190,22 @@
 
   /* ---------------- 对话面板视图 ---------------- */
 
-  function setModeTabs(mode) {
-    var tabs = document.querySelectorAll('#mode-tabs .mode-tab');
-    for (var i = 0; i < tabs.length; i++) {
-      tabs[i].classList.toggle('active', tabs[i].getAttribute('data-mode') === mode);
-    }
+  /* 模式下拉（0.3：原顶部三个模式 tab 合并为输入区一个下拉，与模型选择并列） */
+  function populateModeSelect() {
+    var sel = $('mode-select');
+    sel.innerHTML = '';
+    ['chat', 'research', 'quiz'].forEach(function (mode) {
+      var opt = document.createElement('option');
+      opt.value = mode;
+      opt.textContent = (MODE_ICON[mode] || '') + ' ' + (MODE_CN[mode] || mode);
+      sel.appendChild(opt);
+    });
+    sel.value = state.mode;
+  }
+
+  function syncModeSelect() {
+    var sel = $('mode-select');
+    if (sel && sel.value !== state.mode) sel.value = state.mode;
   }
 
   function populateModelSelect() {
@@ -219,31 +230,42 @@
     return '';
   }
 
-  function renderSkillChips() {
-    var wrap = $('skill-chips');
-    wrap.innerHTML = '';
+  /** 功能勾选面板（0.3：原 skill 胶囊合并为「⚙ 功能」展开的复选框表单） */
+  function updateSkillSummary() {
+    var sum = $('skill-summary');
+    if (!sum) return;
+    var enabled = state.skills.filter(function (s) { return state.activeSkills.indexOf(s.id) >= 0; });
+    sum.textContent = enabled.length === 0 ? '未启用功能' :
+      '已启用: ' + enabled.map(function (s) { return s.displayName; }).join(' / ');
+  }
+
+  function renderSkillPanel() {
+    var panel = $('skill-panel');
+    panel.innerHTML = '';
     state.skills.forEach(function (s) {
-      var chip = el('button', 'skill-chip' + (state.activeSkills.indexOf(s.id) >= 0 ? ' active' : ''));
-      chip.setAttribute('data-skill', s.id);
-      chip.title = s.description || '';
-      chip.textContent = (s.icon ? s.icon + ' ' : '') + s.displayName;
-      if (!state.webSearchAvailable && s.id === 'search') {
-        var searchEnabled = state.activeSkills.indexOf(s.id) >= 0;
-        /* web 不可用时禁止开启（disabled），但已启用的允许点击关闭——
-         * 避免「store 启用但工具未注册」后回显 active+disabled 且无法移除 */
-        if (!searchEnabled) chip.disabled = true;
-        chip.title = (s.description || '') + '（web_search 不可用）';
-      }
-      chip.addEventListener('click', function () {
-        if (chip.disabled || !state.convId) return;
+      var label = el('label', 'skill-option');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = state.activeSkills.indexOf(s.id) >= 0;
+      /* web 不可用时禁止开启（disabled），但已启用的允许点击关闭——
+       * 避免「store 启用但工具未注册」后回显 checked+disabled 且无法移除 */
+      var disabled = !state.webSearchAvailable && s.id === 'search' && !cb.checked;
+      if (disabled) cb.disabled = true;
+      label.appendChild(cb);
+      label.appendChild(el('span', 'skill-opt-name', (s.icon ? s.icon + ' ' : '') + s.displayName));
+      var desc = (s.description || '') + (disabled ? '（web_search 不可用）' : '');
+      if (desc) label.appendChild(el('span', 'skill-opt-desc', desc));
+      cb.addEventListener('change', function () {
+        if (!state.convId) { cb.checked = !cb.checked; return; }  // 未打开会话：回滚勾选
         var idx = state.activeSkills.indexOf(s.id);
-        if (idx >= 0) state.activeSkills.splice(idx, 1);
-        else state.activeSkills.push(s.id);
-        chip.classList.toggle('active', idx < 0);
+        if (cb.checked && idx < 0) state.activeSkills.push(s.id);
+        if (!cb.checked && idx >= 0) state.activeSkills.splice(idx, 1);
+        updateSkillSummary();
         post({ type: 'toggleSkill', conversationId: state.convId, skillId: s.id });
       });
-      wrap.appendChild(chip);
+      panel.appendChild(label);
     });
+    updateSkillSummary();
   }
 
   function clearStreaming() {
@@ -433,6 +455,54 @@
     container.appendChild(footer);
   }
 
+  /** 复制文本（webview 剪贴板；失败时降级 execCommand，仍失败则无提示静默） */
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function () { /* 忽略：降级走 execCommand 已覆盖 */ });
+      return;
+    }
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e) { /* 静默 */ }
+  }
+
+  /**
+   * 消息悬浮功能栏（0.3）：hover 消息时显示 [复制] / [Fork]（assistant）/ [回溯]（user）。
+   * 需要消息 ts 定位（fork/rewind 在扩展侧按 ts 查 store）；ts 缺失则只挂复制。
+   */
+  function attachMessageActions(container, role, ts) {
+    if (container.querySelector('.msg-actions')) return;
+    var bar = el('div', 'msg-actions');
+    var copyBtn = el('button', '', '复制');
+    copyBtn.title = '复制该条内容';
+    copyBtn.addEventListener('click', function () { copyText(container.textContent || ''); });
+    bar.appendChild(copyBtn);
+    if (role === 'assistant' && ts) {
+      var forkBtn = el('button', '', 'Fork');
+      forkBtn.title = '以该条为终点派生新会话（原会话保留）';
+      forkBtn.addEventListener('click', function () {
+        if (state.convId) post({ type: 'fork', conversationId: state.convId, messageTs: ts });
+      });
+      bar.appendChild(forkBtn);
+    }
+    if (role === 'user' && ts) {
+      var rewindBtn = el('button', '', '回溯');
+      rewindBtn.title = '截断到该条并重新发送（附件不重发）';
+      rewindBtn.addEventListener('click', function () {
+        if (state.convId) post({ type: 'rewind', conversationId: state.convId, messageTs: ts });
+      });
+      bar.appendChild(rewindBtn);
+    }
+    container.appendChild(bar);
+  }
+
   /* ---- 工作区写确认卡 ---- */
 
   function buildDiff(proposal) {
@@ -513,9 +583,9 @@
     renderAttachmentChips();
 
     $('chat-title').textContent = state.convTitle;
-    setModeTabs(state.mode);
+    syncModeSelect();
     populateModelSelect();
-    renderSkillChips();
+    renderSkillPanel();
 
     var box = $('messages');
     box.innerHTML = '<div id="chat-empty" class="chat-empty">开始你的第一次对话吧</div>';
@@ -530,7 +600,11 @@
 
     (conv.messages || []).forEach(function (msg) {
       if (msg.role === 'user') {
-        addUserMsg(msg.content, []);
+        var udiv = el('div', 'msg-user');
+        if (msg.content) udiv.appendChild(document.createTextNode(msg.content));
+        udiv.setAttribute('data-ts', String(msg.ts || ''));
+        attachMessageActions(udiv, 'user', msg.ts);
+        box.appendChild(udiv);
       } else if (msg.role === 'assistant') {
         if (msg.reasoning) {
           var det = el('details', 'msg-reasoning');
@@ -543,6 +617,8 @@
         /* 历史消息为原始 markdown 文本：转义渲染（富文本化仅流式 finalize 提供） */
         var div = el('div', 'msg-assistant', '');
         div.textContent = msg.content || '';
+        div.setAttribute('data-ts', String(msg.ts || ''));
+        attachMessageActions(div, 'assistant', msg.ts);
         box.appendChild(div);
       } else if (msg.role === 'tool') {
         var card = el('div', 'msg-tool');
@@ -642,8 +718,9 @@
         state.workspaceWriteEnabled = !!data.workspaceWriteEnabled;
         state.untrustedWorkspace = !!data.untrustedWorkspace;
         renderSessions();
+        populateModeSelect();
         populateModelSelect();
-        renderSkillChips();
+        renderSkillPanel();
         updateWebSearchBanner();
         updateUntrustedBanner();
         break;
@@ -657,7 +734,26 @@
           updatedAt: data.conv.updatedAt,
           messageCount: (data.conv.messages || []).length
         });
-        if (state.view === 'chat') renderConversation(data.conv);
+        if (state.view === 'chat') {
+          if (state.streaming) {
+            /* 发送后补发的 conversation：RICH 流式渲染已在进行中，不做整体重渲染，
+             * 仅把最近一条乐观 user 气泡补上 store 的 ts（悬浮栏「回溯」定位用，0.3） */
+            var msgs = data.conv.messages || [];
+            for (var mi = msgs.length - 1; mi >= 0; mi--) {
+              if (msgs[mi].role === 'user') {
+                var bubbles = document.querySelectorAll('.msg-user');
+                var lastU = bubbles[bubbles.length - 1];
+                if (lastU && !lastU.getAttribute('data-ts')) {
+                  lastU.setAttribute('data-ts', String(msgs[mi].ts || ''));
+                  attachMessageActions(lastU, 'user', msgs[mi].ts);
+                }
+                break;
+              }
+            }
+          } else {
+            renderConversation(data.conv);
+          }
+        }
         break;
 
       case 'delta':
@@ -685,9 +781,12 @@
           /* finalize.html 为扩展侧渲染好的 markdown HTML，直接整体替换（信任扩展侧） */
           state.assistantEl.classList.remove('streaming');
           state.assistantEl.setAttribute('data-mid', data.messageId || '');
+          state.assistantEl.setAttribute('data-ts', String(data.ts || ''));
           state.assistantEl.innerHTML = data.html || '';
           /* 含来源链接的最终帧：追加 [生成为笔记]（text 用流式累积的完整原文） */
           maybeAddSaveNoteFooter(state.assistantEl, state.lastFullText);
+          /* 悬浮功能栏（复制/Fork）在 finalize 后挂载，此时才知该条消息 ts */
+          attachMessageActions(state.assistantEl, 'assistant', data.ts);
           state.assistantEl = null;
         }
         clearStreaming();
@@ -765,6 +864,9 @@
   function bindEvents() {
     /* 会话列表 */
     $('new-conversation-btn').addEventListener('click', openModeModal);
+    $('open-wordbook-btn').addEventListener('click', function () {
+      post({ type: 'openWordBook' });
+    });
     $('mode-cancel').addEventListener('click', closeModeModal);
     $('mode-modal-mask').addEventListener('click', closeModeModal);
     var modeOpts = document.querySelectorAll('.mode-option');
@@ -774,20 +876,21 @@
       });
     }
 
-    /* 模式 tab 切换 */
-    var tabs = document.querySelectorAll('#mode-tabs .mode-tab');
-    for (var j = 0; j < tabs.length; j++) {
-      tabs[j].addEventListener('click', function () {
-        var mode = this.getAttribute('data-mode');
-        if (mode === state.mode || !state.convId) return;
-        state.mode = mode;
-        setModeTabs(mode);
-        post({ type: 'setMode', conversationId: state.convId, mode: mode });
-        state.activeSkills = defaultSkillIds(mode);
-        renderSkillChips();
-        updateWebSearchBanner();
-      });
-    }
+    /* 模式下拉（0.3：替代原顶部三个模式 tab） */
+    $('mode-select').addEventListener('change', function () {
+      var mode = this.value;
+      if (mode === state.mode || !state.convId) { syncModeSelect(); return; }
+      state.mode = mode;
+      post({ type: 'setMode', conversationId: state.convId, mode: mode });
+      state.activeSkills = defaultSkillIds(mode);
+      renderSkillPanel();
+      updateWebSearchBanner();
+    });
+
+    /* 功能勾选面板展开/收起（0.3：替代原 skill 胶囊行） */
+    $('skill-toggle').addEventListener('click', function () {
+      $('skill-panel').classList.toggle('hidden');
+    });
 
     /* 输入区 */
     var input = $('input');

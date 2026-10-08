@@ -292,6 +292,20 @@ export function activate(context: vscode.ExtensionContext): void {
   registerNoteCommand('aiStudy.addNoteFromSelection');
   registerNoteCommand('aiStudy.addToWordBook');
 
+  // ---- 「打开单词本」：确保文件存在并打开（侧边栏会话视图卡片 / 命令面板，0.3） ----
+  subscriptions.push(
+    vscode.commands.registerCommand('aiStudy.openWordBook', async () => {
+      try {
+        const p = await new WordBook(config.notesRoot).ensure();
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(p));
+        await vscode.window.showTextDocument(doc, { preview: false });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        void vscode.window.showErrorMessage(`打开单词本失败: ${message}`);
+      }
+    }),
+  );
+
   // ---- 「AI 搜索」命令：编辑器选中文本（共享 PDF 工具栏的 search 动作；Task 7） ----
   subscriptions.push(
     vscode.commands.registerCommand('aiStudy.newResearchSession', async () => {

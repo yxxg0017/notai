@@ -23,6 +23,19 @@ export class WordBook {
     return join(this.notesRoot, '单词本.md');
   }
 
+  /** 确保单词本文件存在（不存在则先建 `# 单词本` 头），返回文件路径（「打开单词本」入口用） */
+  async ensure(): Promise<string> {
+    const p = this.path();
+    if (!isInsideVault(this.notesRoot, p)) {
+      throw new Error(`单词本路径逃逸笔记库: ${p}`);
+    }
+    if (!fs.existsSync(p)) {
+      await fs.promises.mkdir(this.notesRoot, { recursive: true });
+      await fs.promises.writeFile(p, '# 单词本\n', 'utf8');
+    }
+    return p;
+  }
+
   /** 追加一条词条；文件不存在时先创建 `# 单词本` 头。空字段省略。 */
   async addEntry(e: WordEntry): Promise<void> {
     const p = this.path();

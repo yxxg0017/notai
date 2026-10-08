@@ -467,9 +467,9 @@ export class ChatController {
 
   /**
    * 发送用户消息并驱动 agent 循环。
-   * 空/纯空白且无有效附件时忽略；`announce` 为 true 时（扩展侧发起：
-   * ensureResearchSession/explainToConversation）在追加用户消息后先补发
-   * conversation 让 chat 视图整体渲染，再开始流式。
+   * 空/纯空白且无有效附件时忽略。发送后补发 conversation（交互发送时前端正处于
+   * 流式渲染中，仅用于给乐观 user 气泡补 ts 定位——悬浮栏「回溯」；announce 路径
+   * （扩展侧发起：ensureResearchSession/explainToConversation）则整体渲染再流式）。
    */
   async send(
     conversationId: string,
@@ -499,9 +499,8 @@ export class ChatController {
     await this.deps.store.save(conv);
     this.lastInputs.set(conversationId, { text: trimmed, attachments });
 
-    if (opts.announce) {
-      this.deps.postToChat({ type: 'conversation', conv: { ...conv } });
-    }
+    // 补发 conversation（含刚 push 的 user 消息）：前端据此定位 ts / 整体渲染（见上注）
+    this.deps.postToChat({ type: 'conversation', conv: { ...conv } });
     await this.runTurn(conv);
   }
 
@@ -540,6 +539,56 @@ export class ChatController {
       await this.deps.store.save(conv);
       await this.send(conversationId, text, attachments);
     })();
+  }
+
+  /**
+   * 消息悬浮栏「Fork」（0.3）：以该条 assistant 消息为终点派生新会话——
+   * 新 id、标题加「(fork)」、mode/model/skillIds 继承，历史 = 原会话截到该条（含）；
+   * 原会话不动。进行中（activeAbort）或定位失败时忽略。
+   */
+  async forkFrom(conversationId: string, messageTs: number): Promise<void> {
+    const conv = await this.deps.store.get(conversationId);
+    if (!conv || this.activeAbort.has(conversationId)) {
+      return;
+    }
+    const idx = conv.messages.findIndex((m) => m.role === 'assistant' && m.ts === messageTs);
+    if (idx < 0) {
+      return;
+    }
+    const now = Date.now();
+    const forkOf: Conversation = {
+      ...conv,
+      id: randomUUID().replace(/-/g, ''),
+      title: `${conv.title} (fork)`,
+      messages: conv.messages.slice(0, idx + 1).map((m) => ({ ...m })),
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.deps.store.save(forkOf);
+    this.deps.focusChat();
+    this.deps.postToChat({ type: 'conversation', conv: forkOf });
+    await this.refreshSessions();
+  }
+
+  /**
+   * 消息悬浮栏「回溯」（0.3）：截断到该条 user 消息（含该条之前的全部历史，
+   * 丢弃该条及其后），再以该条原文自动重发（附件不重发，与 retry 的 lastInputs 不同）。
+   * 进行中（activeAbort）或定位失败时忽略。
+   */
+  async rewindTo(conversationId: string, messageTs: number): Promise<void> {
+    const conv = await this.deps.store.get(conversationId);
+    if (!conv || this.activeAbort.has(conversationId)) {
+      return;
+    }
+    const idx = conv.messages.findIndex((m) => m.role === 'user' && m.ts === messageTs);
+    if (idx < 0) {
+      return;
+    }
+    const text = conv.messages[idx].content;
+    // 截断到该条 user 消息之前（不含该条），再重发原文（send 会重新 push 该条）
+    conv.messages = conv.messages.slice(0, idx);
+    await this.deps.store.save(conv);
+    await this.send(conversationId, text, []);
   }
 
   /** 划词「解释」路由到会话（explainTarget=conversation）：复用最近的 chat 会话或新建 */
@@ -740,6 +789,24 @@ export class ChatController {
         }
         break;
       }
+      case 'openWordBook': {
+        // 侧边栏「打开单词本」卡片：注册的 aiStudy.openWordBook 命令负责 ensure+打开
+        // (Thenable 无 .catch，用 async/await 包裹以统一错误提示)
+        try {
+          await vscode.commands.executeCommand('aiStudy.openWordBook');
+        } catch (err) {
+          void vscode.window.showErrorMessage(
+            `打开单词本失败: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        break;
+      }
+      case 'fork':
+        await this.forkFrom(msg.conversationId, msg.messageTs);
+        break;
+      case 'rewind':
+        await this.rewindTo(msg.conversationId, msg.messageTs);
+        break;
     }
   }
 
@@ -874,6 +941,7 @@ export class ChatController {
       type: 'finalize',
       conversationId,
       messageId: `${conversationId}:${message.ts}`,
+      ts: message.ts,
       html: renderSimpleMarkdown(message.content),
     });
   }
