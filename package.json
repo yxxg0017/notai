@@ -234,7 +234,7 @@
     "compile": "npm run copy-pdf-assets && npm run copy-chat-assets && tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.test.json && node --test out-test/test/",
     "check": "npm run compile && npm test",
-    "package": "npm run compile && npx vsce package --no-dependencies"
+    "package": "npm run compile && npx vsce package --no-dependencies --out ../vsix"
   },
   "dependencies": {
     "pdfjs-dist": "^4.10.38"
