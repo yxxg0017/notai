@@ -43,7 +43,8 @@ export interface ChatControllerDeps {
   notes: NoteService;
   /** API Key 读取（webSearchKey 为 Task 8 web_search 预留） */
   getSecrets: () => Promise<{ apiKey: string; webSearchKey: string }>;
-  /** 推送 UiOut 到 chat 视图（视图未 resolve 时由 Sink 缓冲） */
+  /** 推送 UiOut 到 Harness 视图：init 由 Sink 多播到 session+chat（会话列表即时刷新）；
+   *  其余消息仅投 chat 视图（未 resolve 时由 Sink 缓冲） */
   postToChat: (msg: UiOut) => void;
   focusChat: () => void;
   readPdfSelection: () => PdfSelection | undefined;

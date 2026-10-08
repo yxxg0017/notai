@@ -16,22 +16,26 @@ import { chatHtml, createChatView, harnessLocalRoots, HarnessSink } from './chat
 
 /**
  * 注册 `aiStudy.sessionList` webview view（`retainContextWhenHidden: true`）。
- * 会话创建/删除在 session 视图内完成；视图每次可见时刷新列表。
+ * 会话创建/删除在 session 视图内完成；sink 多播的 init 负责即时刷新列表，
+ * 视图每次可见时再兜底刷新一次（隐藏期间 store 也可能变化）。
  */
 export function createSessionView(
   context: vscode.ExtensionContext,
   controller: ChatController,
+  sink: HarnessSink,
 ): vscode.Disposable {
   return vscode.window.registerWebviewViewProvider(
     'aiStudy.sessionList',
     {
       resolveWebviewView(webviewView: vscode.WebviewView): void {
+        sink.setSessionView(webviewView);
         const view = webviewView;
         view.webview.options = {
           enableScripts: true,
           localResourceRoots: harnessLocalRoots(context),
         };
         view.webview.html = chatHtml(context, view.webview, 'session');
+        view.onDidDispose(() => sink.setSessionView(undefined));
         view.webview.onDidReceiveMessage((msg: unknown) => {
           void controller.handleUiIn(msg as UiIn).catch((err) => {
             console.error('[nota] session handleUiIn 失败:', err);
@@ -70,6 +74,6 @@ export function createHarnessViews(
   controller: ChatController,
   sink: HarnessSink,
 ): void {
-  context.subscriptions.push(createSessionView(context, controller));
+  context.subscriptions.push(createSessionView(context, controller, sink));
   context.subscriptions.push(createChatView(context, controller, sink));
 }

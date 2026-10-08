@@ -20,15 +20,25 @@ export type HarnessView = 'session' | 'chat';
 export const HARNESS_MEDIA_DIR = ['src', 'ui', 'media'];
 
 /**
- * UiOut 消息桥：controller 的 postToChat 落点。chat 视图未 resolve 时缓冲
- * （防「划词联动建会话」先于视图创建导致流式增量丢失），resolve 后按序 flush。
- * 单线程保证：flush 只会发生在 setChatView 时刻，之后全部直投，不重不漏。
+ * UiOut 消息桥：controller 的 postToChat 落点。
+ * - `init`（会话列表全量刷新）**多播**到 session + chat 两个视图：修复评审发现项
+ *   「session 视图内 ＋新对话 → focusChat 只切换 chat 视图可见性、不触发 session 视图
+ *   onDidChangeVisibility，新会话在列表中不出现」；
+ * - 其余消息（conversation/delta/finalize/toolLifecycle/error/confirmRequest/…）仅投
+ *   chat 视图；chat 视图未 resolve 时缓冲（防「划词联动建会话」先于视图创建导致流式
+ *   增量丢失），resolve 后按序 flush。单线程保证：flush 只会发生在 setChatView 时刻。
  */
 export class HarnessSink {
+  private sessionView: vscode.WebviewView | undefined;
   private chatView: vscode.WebviewView | undefined;
   private buffer: UiOut[] = [];
   /** 未 resolve 期间缓冲上限，防极端场景无限增长（init 全量刷新兜底） */
   private static readonly BUFFER_MAX = 200;
+
+  /** session 视图 resolve/dispose 时由 createSessionView 回调（init 多播目标） */
+  setSessionView(view: vscode.WebviewView | undefined): void {
+    this.sessionView = view;
+  }
 
   /** chat 视图 resolve/dispose 时由 createChatView 回调；set 时先 flush 缓冲 */
   setChatView(view: vscode.WebviewView | undefined): void {
@@ -43,8 +53,14 @@ export class HarnessSink {
     }
   }
 
-  /** 推送 UiOut 到 chat 视图；未 resolve 时缓冲（不丢流式增量） */
+  /**
+   * 推送 UiOut：init 广播到 session + chat 两个视图（session 未 resolve 时跳过——
+   * 其 resolve/可见时已自行拉取 init）；其余消息仅发 chat 视图，未 resolve 时缓冲。
+   */
   post(msg: UiOut): void {
+    if (msg.type === 'init' && this.sessionView) {
+      void this.sessionView.webview.postMessage(msg);
+    }
     if (this.chatView) {
       void this.chatView.webview.postMessage(msg);
       return;
