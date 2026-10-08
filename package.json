@@ -14,9 +14,39 @@
   "main": "./out/extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onCustomEditor:aiStudy.pdfEditor"
+    "onCustomEditor:aiStudy.pdfEditor",
+    "onView:aiStudy.sessionList"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "未信任工作区：仅提供只读工具与笔记库写入"
+    }
+  },
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aiStudy",
+          "title": "学习",
+          "icon": "resources/harness.svg"
+        }
+      ]
+    },
+    "views": {
+      "aiStudy": [
+        {
+          "type": "webview",
+          "id": "aiStudy.sessionList",
+          "name": "会话列表"
+        },
+        {
+          "type": "webview",
+          "id": "aiStudy.chatPanel",
+          "name": "对话"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "aiStudy.openPdf",
@@ -42,6 +72,10 @@
       {
         "command": "aiStudy.addToWordBook",
         "title": "AI 学习: 添加到单词本"
+      },
+      {
+        "command": "aiStudy.newResearchSession",
+        "title": "AI 学习: AI 搜索选中内容"
       },
       {
         "command": "aiStudy.setApiKey",
@@ -74,6 +108,11 @@
           "command": "aiStudy.addToWordBook",
           "when": "editorHasSelection",
           "group": "aiStudy@5"
+        },
+        {
+          "command": "aiStudy.newResearchSession",
+          "when": "editorHasSelection",
+          "group": "aiStudy@6"
         }
       ],
       "explorer/context": [
@@ -187,7 +226,8 @@
   },
   "scripts": {
     "copy-pdf-assets": "node scripts/copy-pdf-assets.js",
-    "compile": "npm run copy-pdf-assets && tsc -p tsconfig.json",
+    "copy-chat-assets": "node scripts/copy-chat-assets.js",
+    "compile": "npm run copy-pdf-assets && npm run copy-chat-assets && tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.test.json && node --test out-test/test/",
     "check": "npm run compile && npm test",
     "package": "npm run compile && npx vsce package --no-dependencies"

@@ -47,10 +47,12 @@ workbench 恢复会话
 
 ~~`window.restoreWindows: "none"`~~（已回退）：2026-09-30 实测**无效**——即使不恢复窗口，重载/重启后打开 PDF 仍弹 binary 错误框。说明 `tryRevive` 并非只在会话恢复路径触发，`workbench.editorAssociations` 关联的自定义编辑器在重载时仍会走文本模型创建 + 二进制检测。**该设置已从用户 settings.json 移除。**
 
-- 由于该路不可绕行，问题 2 的修复只能靠**方案 A**（自管 `WebviewPanel`，§2.4），已纳入 M6 待办。
+- 由于该路不可绕行，问题 2 的修复只能靠**方案 A**（自管 `WebviewPanel`，§2.4），已列入**计划 2（M4-M6）完成之后的 backlog**（见 §5 待修复清单）。
 - 若实现方案 A 前仍需排查，可从 Output 面板「AI 学习助手」/ `nota-trace.log` 确认弹窗时刻的调用栈（曾出现 `KHe.resolveWebview`），定位是否还有独立于恢复的触发路径。
 
-### 2.4 彻底修复的可选方案（后续项目完成后再做）
+### 2.4 彻底修复的可选方案（计划 2 之后，backlog）
+
+> **状态（2026-10-08）**：计划 2（M4-M6）已交付完成，本方案 A 为**计划 2 之后的 backlog 项**（用户已确认「整个项目完成后再细改」），当前不再继续排查该问题。
 
 - **方案 A（推荐，改动适中）**：废弃 Custom Text Editor，改为扩展自管 `WebviewPanel` + `WebviewPanelSerializer`：
   - 自己创建/恢复 panel，完全不经过文本模型与二进制检测，问题 2 与 editorAssociations 路径彻底解耦；
@@ -103,7 +105,7 @@ workbench 恢复会话
 
 ## 5. 待修复清单（按优先级）
 
-- [ ] **（方案 A）自管 WebviewPanel + `WebviewPanelSerializer`** 替换 Custom Text Editor，从根上消除文本模型/二进制检测依赖（§2.4，含收益与代价分析）——`restoreWindows: "none"` 已证伪，这是问题 2 的唯一修复路径，**列入计划 2（M4-M6）完成后的收尾项**（用户已确认「整个项目完成后再细改」）。
+- [ ] **[backlog · 计划 2 之后]（方案 A）自管 WebviewPanel + `WebviewPanelSerializer`** 替换 Custom Text Editor，从根上消除文本模型/二进制检测依赖（§2.4，含收益与代价分析）——`restoreWindows: "none"` 已证伪；**计划 2（M4-M6）已完成，此项转入计划 2 之后的 backlog**（用户已确认「整个项目完成后再细改」）。
 - [ ] **截断文件友好提示**：viewer 侧检测 `%%EOF` 缺失时提示「文件可能下载不完整」，引导 `pdf-recover.mjs` 或重新下载（§3）。
 - [ ] **诊断降噪**：`nota-trace.log` 增加开关/轮转，避免长期运行膨胀；`viewer-diag` 只保留错误级。
 - [ ] **回归**：`preview: false` 后多文档独立性与阅读位置回写（`#page=N` 回链、关闭回写）再走一遍手测（01/03/04/19/32 + 两篇 recovered）。

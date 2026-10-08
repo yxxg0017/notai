@@ -1,0 +1,807 @@
+/* nota 学习助手 webview 样式（基于 VS Code 主题变量，自动适配亮/暗色主题） */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.view.hidden {
+  display: none;
+}
+
+/* ==================== 通用按钮 ==================== */
+
+.primary-btn {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 3px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.primary-btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.icon-btn {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  border: none;
+  border-radius: 3px;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.icon-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* ==================== 会话列表视图 ==================== */
+
+.session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  flex-shrink: 0;
+}
+
+.session-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.session-list {
+  list-style: none;
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 8px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.session-item:hover {
+  background: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+}
+
+.session-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.session-title {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.session-time {
+  white-space: nowrap;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 16px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  white-space: nowrap;
+}
+
+.session-actions {
+  display: none;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.session-item:hover .session-actions {
+  display: flex;
+}
+
+.session-actions button {
+  background: transparent;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  color: var(--vscode-foreground);
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.session-actions button:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.session-actions .danger:hover {
+  border-color: var(--vscode-errorForeground, #f66);
+  color: var(--vscode-errorForeground, #f66);
+}
+
+.session-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+/* 模式选择弹层 */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.modal-body {
+  position: relative;
+  z-index: 1;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  border-radius: 6px;
+  padding: 16px;
+  width: min(420px, 92vw);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.modal-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mode-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.mode-option:hover {
+  border-color: var(--vscode-focusBorder, var(--vscode-button-background));
+  background: var(--vscode-list-hoverBackground);
+}
+
+.mode-icon {
+  font-size: 18px;
+}
+
+.mode-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mode-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-left: auto;
+}
+
+/* ==================== 对话面板视图 ==================== */
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  flex-shrink: 0;
+}
+
+.chat-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+}
+
+.mode-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.mode-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--vscode-descriptionForeground);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.mode-tab:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.mode-tab.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-empty {
+  margin: auto;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+/* 用户气泡（右侧） */
+.msg-user {
+  align-self: flex-end;
+  max-width: 78%;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-radius: 8px 8px 2px 8px;
+  padding: 7px 11px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg-user .attach-tag {
+  display: inline-block;
+  margin: 4px 4px 0 0;
+  padding: 1px 6px;
+  font-size: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* assistant 气泡（左侧） */
+.msg-assistant {
+  align-self: flex-start;
+  max-width: 88%;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  border-radius: 8px 8px 8px 2px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.msg-assistant.streaming .cursor {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--vscode-foreground);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.msg-assistant p {
+  margin: 4px 0;
+}
+
+.msg-assistant ul,
+.msg-assistant ol {
+  margin: 4px 0 4px 18px;
+}
+
+.msg-assistant code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.17));
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.msg-assistant pre code {
+  display: block;
+  padding: 8px;
+  overflow-x: auto;
+}
+
+/* 推理折叠块 */
+.msg-reasoning {
+  align-self: flex-start;
+  max-width: 88%;
+  border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+}
+
+.msg-reasoning summary {
+  cursor: pointer;
+  padding: 5px 10px;
+  user-select: none;
+}
+
+.msg-reasoning .reasoning-body {
+  padding: 0 10px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 工具卡 */
+.msg-tool {
+  align-self: flex-start;
+  width: 88%;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 6px;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.1));
+  font-size: 11px;
+}
+
+.tool-status {
+  font-size: 11px;
+}
+
+.tool-status.running {
+  color: var(--vscode-charts-blue, #4fc1ff);
+}
+
+.tool-status.done {
+  color: var(--vscode-charts-green, #89d185);
+}
+
+.tool-status.error {
+  color: var(--vscode-errorForeground, #f66);
+}
+
+.tool-name {
+  font-weight: 600;
+}
+
+.tool-toggle {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.tool-result {
+  padding: 6px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.tool-result.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+/* 错误卡 */
+.msg-error {
+  align-self: stretch;
+  border: 1px solid var(--vscode-errorForeground, #f66);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--vscode-errorForeground, #f66);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.msg-error .error-text {
+  flex: 1;
+  min-width: 120px;
+  word-break: break-word;
+}
+
+.msg-error button {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  border-radius: 3px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* 通知类消息（noteSaved 等） */
+.msg-notice {
+  align-self: center;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.1));
+  border-radius: 10px;
+  padding: 3px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.msg-notice .notice-open {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  border-radius: 3px;
+  padding: 1px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* finalize 消息块 footer：[生成为笔记]（仅含 http(s):// 链接的最终帧显示） */
+.msg-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+}
+
+.msg-footer button {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  border-radius: 3px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.msg-footer button:hover,
+.msg-notice .notice-open:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* 工作区写确认卡 */
+.confirm-card {
+  align-self: stretch;
+  border: 1px solid var(--vscode-charts-orange, #cca700);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.08));
+}
+
+.confirm-summary {
+  font-weight: 600;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.confirm-path {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.confirm-actions button {
+  border: none;
+  border-radius: 3px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.confirm-actions .apply {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.confirm-actions .apply:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.confirm-actions .reject {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+}
+
+.confirm-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.confirm-state {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.diff-wrap {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.diff-wrap.hidden {
+  display: none;
+}
+
+.diff-col {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.diff-title {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+}
+
+.diff-col pre {
+  margin: 0;
+  padding: 8px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ==================== 输入区 ==================== */
+
+.composer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 未配置网页搜索提示条（web 工具未注册且当前会话为 research 时显示） */
+.websearch-banner {
+  font-size: 11px;
+  color: var(--vscode-warningForeground, #cca700);
+  background: var(--vscode-editorWarning-background, rgba(204, 167, 0, 0.12));
+  border: 1px solid var(--vscode-charts-orange, rgba(204, 167, 0, 0.45));
+  border-radius: 4px;
+  padding: 4px 10px;
+}
+
+.websearch-banner.hidden {
+  display: none;
+}
+
+.attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachment-chips.hidden {
+  display: none;
+}
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  max-width: 240px;
+}
+
+.attach-chip .chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attach-chip .chip-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  line-height: 1;
+}
+
+.skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.skill-chip:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.skill-chip.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: var(--vscode-button-background);
+}
+
+.skill-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.input-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+#input {
+  flex: 1;
+  resize: none;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.35));
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+  max-height: 120px;
+}
+
+#input:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder, var(--vscode-button-background));
+}
+
+#model-select {
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border, rgba(128, 128, 128, 0.35));
+  border-radius: 3px;
+  padding: 5px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  max-width: 140px;
+  cursor: pointer;
+}

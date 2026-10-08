@@ -39,6 +39,7 @@ export function loadConfig(): AppConfig {
 /** API Key 存取封装：仅存 SecretStorage，绝不写入日志或配置导出 */
 export class SecretStore {
   private static readonly KEY = 'aiStudy.apiKey';
+  private static readonly WEB_KEY = 'aiStudy.webSearch.apiKey';
 
   constructor(private readonly storage: vscode.SecretStorage) {}
 
@@ -48,5 +49,10 @@ export class SecretStore {
 
   async setApiKey(v: string): Promise<void> {
     await this.storage.store(SecretStore.KEY, v);
+  }
+
+  /** 网页搜索 API Key（Tavily/博查），与 getApiKey 同模式：缺省空串 */
+  async getWebSearchKey(): Promise<string> {
+    return (await this.storage.get(SecretStore.WEB_KEY)) ?? '';
   }
 }

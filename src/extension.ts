@@ -2,6 +2,9 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { SecretStore, loadConfig } from './config';
 import { DeepSeekProvider } from './core/llm/deepseek';
+import { chatWithRetry } from './core/llm/retry';
+import type { LLMProvider } from './core/llm/types';
+import { ConversationStore } from './core/agent/store';
 import { PdfEditorProvider } from './pdf/pdfEditor';
 import type { ToolbarAction, NoteAction, PdfSelection } from './pdf/pdfEditor';
 import { SelectionActions } from './selection/actions';
@@ -11,6 +14,9 @@ import { renderSimpleMarkdown } from './util/markdown';
 import { NoteService } from './notes/noteService';
 import type { SourceInfo } from './notes/noteService';
 import { WordBook } from './notes/wordbook';
+import { ChatController } from './ui/chatController';
+import { createHarnessViews } from './ui/sessionView';
+import { HarnessSink } from './ui/chatView';
 
 export function activate(context: vscode.ExtensionContext): void {
   const { subscriptions } = context;
@@ -36,6 +42,47 @@ export function activate(context: vscode.ExtensionContext): void {
     config.baseUrl,
     config.model,
   );
+  /**
+   * 装饰器式包装：所有 LLM 调用（ChatController 的 runTurn 与 SelectionActions 的
+   * 划词翻译/解释）统一走 429 指数退避重试；provider 内部（loop.ts/actions.ts）不改。
+   */
+  const retryProvider: LLMProvider = {
+    ...provider,
+    chat: (req) => chatWithRetry(provider, req),
+  };
+  /** 笔记服务（划词动作与 Harness 控制器共用同一实例，notesRoot 同源） */
+  const notes = new NoteService(config.notesRoot);
+
+  // ---- Harness：会话存储 + ChatController + 侧边栏两个 webview view（Task 7 装配） ----
+  const store = new ConversationStore(
+    path.join(context.globalStorageUri.fsPath, 'conversations'),
+  );
+  /** UiOut 消息桥：chat 视图未 resolve 时缓冲，resolve 后按序 flush（见 src/ui/chatView.ts） */
+  const harnessSink = new HarnessSink();
+  const controller = new ChatController({
+    store,
+    provider: retryProvider,
+    config,
+    notes,
+    // webSearchKey 接 SecretStore（Task 9 接线；无 Key 时 controller 侧降级为仅本地检索）
+    getSecrets: async () => ({
+      apiKey: await secrets.getApiKey(),
+      webSearchKey: await secrets.getWebSearchKey(),
+    }),
+    postToChat: (msg) => harnessSink.post(msg),
+    focusChat: () => {
+      void vscode.commands.executeCommand('aiStudy.chatPanel.focus');
+    },
+    readPdfSelection: () => pdfProvider.getCurrentSelection(),
+    readPdfPageText: (page) => pdfProvider.getCurrentPageText(page),
+    workspace: {
+      cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+      untrusted: !vscode.workspace.isTrusted,
+      enabled: config.enableWorkspaceWrite,
+    },
+  });
+  // 注册 aiStudy.sessionList / aiStudy.chatPanel 两个 webview view
+  createHarnessViews(context, controller, harnessSink);
 
   /** 编辑器结果面板（单例复用；标题随动作切换） */
   let resultPanel: vscode.WebviewPanel | undefined;
@@ -43,7 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
   let pdfTarget: { uri: string; page: number } | undefined;
 
   const actions = new SelectionActions({
-    provider,
+    provider: retryProvider,
     config,
     getPdfSelection: () => pdfProvider.getCurrentSelection(),
     onShowResult: (payload: ShowResultPayload) => {
@@ -64,7 +111,7 @@ export function activate(context: vscode.ExtensionContext): void {
       // 编辑器场景：结果面板
       showEditorResultPanel(payload);
     },
-    noteService: new NoteService(config.notesRoot),
+    noteService: notes,
     wordBook: new WordBook(config.notesRoot),
   });
   // 注：onShowResult 中编辑器/PDF 的路由由 pdfTarget 决定（见 report 中消息流说明），
@@ -121,6 +168,26 @@ export function activate(context: vscode.ExtensionContext): void {
       await runNoteAction('note', selection);
       return;
     }
+    if (action === 'search') {
+      // 「AI 搜索」划词联动：复用最近 research 会话或新建，发送并聚焦 chat 视图（Task 7）
+      try {
+        await controller.ensureResearchSession(selection.text);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        void vscode.window.showErrorMessage(`AI 搜索失败: ${message}`);
+      }
+      return;
+    }
+    if (action === 'explain' && config.explainTarget === 'conversation') {
+      // explainTarget=conversation：「解释」改走 Harness 对话（复用/新建 chat 会话并发送）
+      try {
+        await controller.explainToConversation(selection.text, pdfSourceFor(selection));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        void vscode.window.showErrorMessage(`解释失败: ${message}`);
+      }
+      return;
+    }
     pdfTarget = { uri: selection.uri, page: selection.page };
     try {
       await actions[action](selection.text);
@@ -150,6 +217,12 @@ export function activate(context: vscode.ExtensionContext): void {
           if (id === 'aiStudy.copySelection') {
             await actions.copy(text);
             void vscode.window.showInformationMessage('已复制');
+            return;
+          }
+          if (id === 'aiStudy.explainSelection' && config.explainTarget === 'conversation') {
+            // Task 7：explainTarget=conversation ——「解释」改走 Harness 对话（复用/新建 chat 会话）
+            const { text: srcText, source } = resolveSelectionSource();
+            await controller.explainToConversation(srcText, source);
             return;
           }
           await (id === 'aiStudy.translateSelection'
@@ -218,6 +291,29 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   registerNoteCommand('aiStudy.addNoteFromSelection');
   registerNoteCommand('aiStudy.addToWordBook');
+
+  // ---- 「AI 搜索」命令：编辑器选中文本（共享 PDF 工具栏的 search 动作；Task 7） ----
+  subscriptions.push(
+    vscode.commands.registerCommand('aiStudy.newResearchSession', async () => {
+      try {
+        const editor = vscode.window.activeTextEditor;
+        const editorText =
+          editor && !editor.selection.isEmpty
+            ? editor.document.getText(editor.selection)
+            : undefined;
+        // 与选区命令一致：编辑器选区优先，其次 PDF 当前选区
+        const text = requireSelection(editorText ?? pdfProvider.getCurrentSelection()?.text);
+        await controller.ensureResearchSession(text);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message === '请先选中文本') {
+          void vscode.window.showWarningMessage('请先选中文本');
+        } else {
+          void vscode.window.showErrorMessage(message);
+        }
+      }
+    }),
+  );
 
   /** 编辑器结果面板：流式/错误卡均渲染 renderSimpleMarkdown 输出；错误时提供原生「重试」 */
   function showEditorResultPanel(payload: ShowResultPayload): void {
