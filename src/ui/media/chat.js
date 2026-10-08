@@ -335,7 +335,10 @@
       div.appendChild(retry);
     }
     var cfg = el('button', '', '去配置');
-    /* 「去配置」本任务仅渲染按钮不接线（Task 7/11 处理） */
+    cfg.addEventListener('click', function () {
+      post({ type: 'openSettings' });
+      div.remove();
+    });
     div.appendChild(cfg);
     $('messages').appendChild(div);
     scrollBottom();
@@ -721,8 +724,10 @@
   }
 
   function boot() {
+    /* webview 内联 HTML 无 location.search，扩展侧通过 window.__NOTA_VIEW__ 注入视图标识 */
     var params = new URLSearchParams(window.location.search);
-    state.view = params.get('view') === 'chat' ? 'chat' : 'session';
+    var viewParam = window.__NOTA_VIEW__ || params.get('view');
+    state.view = viewParam === 'chat' ? 'chat' : 'session';
     switchView(state.view);
     bindEvents();
     /* init 由扩展侧在 webview 加载后主动推送，前端只处理渲染；ready 保留协议不强求发送 */

@@ -21,9 +21,13 @@ export type UiAttachment = {
   content?: string;
 };
 
+/** init 会话元数据：ConversationMeta 基础上补 model 字段（前端模型选择器精确回显，Task 7 增补） */
+export type SessionMeta = ConversationMeta & { model?: string };
+
 /** webview → 扩展侧的消息 */
 export type UiIn =
   | { type: 'ready' }
+  | { type: 'openSettings' }
   | { type: 'newConversation'; mode: ConversationMode; model: string; skillIds: string[] }
   | { type: 'send'; conversationId: string; text: string; attachments: UiAttachment[] }
   | { type: 'abort'; conversationId: string }
@@ -44,7 +48,7 @@ export type UiIn =
 export type UiOut =
   | {
       type: 'init';
-      sessions: ConversationMeta[];
+      sessions: SessionMeta[];
       models: string[];
       skills: { id: string; displayName: string; description: string; defaultOn: boolean; icon?: string }[];
       webSearchAvailable: boolean;

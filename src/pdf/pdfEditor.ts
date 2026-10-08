@@ -10,8 +10,8 @@ export interface PdfSelection {
   text: string;
 }
 
-/** 浮动工具栏动作（note = 扫描页「手动添加笔记」；Task 6 接线） */
-export type ToolbarAction = 'translate' | 'explain' | 'copy' | 'note';
+/** 浮动工具栏动作（note = 扫描页「手动添加笔记」；Task 6 接线；search = 「AI 搜索」划词联动，Task 7 接线） */
+export type ToolbarAction = 'translate' | 'explain' | 'copy' | 'note' | 'search';
 
 /** 笔记/单词本动作（viewer「加笔记/加单词本」按钮 → note-action 消息） */
 export type NoteAction = 'note' | 'wordbook';
@@ -25,6 +25,7 @@ interface ViewerInMessage {
     | 'toolbar-action'
     | 'note-action'
     | 'page-change'
+    | 'page-text'
     | 'pdf:error'
     | 'viewer-diag';
   pages?: number;
@@ -92,6 +93,10 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly lastPageByUri = new Map<string, number>();
   /** 已打开的 viewer 面板（键为 uri.toString()；一个文件可开多个面板） */
   private readonly panelsByUri = new Map<string, Set<vscode.WebviewPanel>>();
+  /** getCurrentPageText 的挂起请求：key 为 `uri::page`（page 缺省为当前页，见下） */
+  private readonly pendingPageText = new Map<string, (text: string | undefined) => void>();
+  /** 最近收到互动的文档（getCurrentPageText 无选区时的回退目标；键为 uri.toString()） */
+  private lastActiveUri: string | undefined;
   /** toolbar-action 动作处理器（由 extension.ts 注入，Task 5 接线；note 亦在此路由） */
   private actionHandler: ((action: ToolbarAction, selection: PdfSelection) => void) | undefined;
   /** note-action 处理器（viewer「加笔记/加单词本」→ SelectionActions，Task 6 接线） */
@@ -108,6 +113,36 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
   /** 供外部查询当前选区（Task 5 使用）；无选区时返回 undefined */
   public getCurrentSelection(): PdfSelection | undefined {
     return this.currentSelection;
+  }
+
+  /**
+   * 读取当前（或指定）PDF 页文本：向目标文档的 viewer 发 `request-page-text`，
+   * 3 秒超时兜底返回 undefined（viewer 未加载/加载中/无文本页）。
+   * 目标文档 = 当前选区归属文档；无选区时回退最近互动的文档。
+   */
+  public getCurrentPageText(page?: number): Promise<string | undefined> {
+    const uri = this.currentSelection?.uri ?? this.lastActiveUri;
+    if (!uri) {
+      return Promise.resolve(undefined);
+    }
+    const panels = this.panelsByUri.get(uri);
+    if (!panels || panels.size === 0) {
+      return Promise.resolve(undefined);
+    }
+    const panel = panels.values().next().value as vscode.WebviewPanel;
+    return new Promise((resolve) => {
+      const key = `${uri}::${page ?? 0}`;
+      this.pendingPageText.set(key, resolve);
+      void panel.webview.postMessage({ type: 'request-page-text', page });
+      // 超时兜底：viewer 未就绪/异常时不悬挂调用方（controller 已 catch 降级为空文本）
+      setTimeout(() => {
+        const pending = this.pendingPageText.get(key);
+        if (pending) {
+          this.pendingPageText.delete(key);
+          pending(undefined);
+        }
+      }, 3000);
+    });
   }
 
   /** 注入浮动工具栏动作处理器（translate/explain/copy/note；Task 5 接线，note 于 Task 6 路由） */
@@ -260,6 +295,8 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
     message: ViewerInMessage,
   ): void {
     const uri = document.uri.toString();
+    // 任何互动都视为「最近活跃文档」（getCurrentPageText 无选区时的回退目标）
+    this.lastActiveUri = uri;
     switch (message.type) {
       case 'ready':
         // 由 resolveCustomTextEditor 中注册的 ready 监听负责触发 sendOpen；此处 no-op
@@ -294,11 +331,16 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
         this.output.appendLine(
           `[pdf] toolbar-action ${message.action ?? '?'} @p${selection.page} (${selection.text.length} chars)`,
         );
-        // Task 5 接线：翻译/解释/复制交给注入的处理器执行；Task 6 接线：note（扫描页手动笔记）
+        // Task 5 接线：翻译/解释/复制交给注入的处理器执行；Task 6 接线：note（扫描页手动笔记）；
+        // Task 7 接线：search（「AI 搜索」划词联动 → controller.ensureResearchSession）
         const action = message.action;
         if (
           this.actionHandler &&
-          (action === 'translate' || action === 'explain' || action === 'copy' || action === 'note') &&
+          (action === 'translate' ||
+            action === 'explain' ||
+            action === 'copy' ||
+            action === 'note' ||
+            action === 'search') &&
           (selection.text.trim() !== '' || action === 'note')
         ) {
           this.actionHandler(action, selection);
@@ -327,6 +369,16 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
         const key = document.uri.with({ fragment: '' }).toString();
         this.lastPageByUri.set(key, page);
         void this.context.workspaceState.update(pageStateKey(key), page);
+        break;
+      }
+      case 'page-text': {
+        // 响应 getCurrentPageText 的 request-page-text：回填挂起请求（key 与请求侧一致）
+        const key = `${uri}::${message.page ?? 0}`;
+        const pending = this.pendingPageText.get(key);
+        if (pending) {
+          this.pendingPageText.delete(key);
+          pending(message.text ?? undefined);
+        }
         break;
       }
       case 'pdf:error': {

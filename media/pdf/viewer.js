@@ -82,6 +82,9 @@ const state = {
   resultCtx: null,
 };
 
+/** 已渲染页的文本缓存（键 = 页码；request-page-text 时优先命中，未命中现取，Task 7） */
+const pageTextCache = new Map();
+
 /* ---------------- DOM ---------------- */
 const $ = (id) => document.getElementById(id);
 const pagesEl = $('pages');
@@ -108,6 +111,7 @@ function clamp(v, lo, hi) {
 async function openPdf(config) {
   state.openConfig = config;
   const token = ++state.loadToken;
+  pageTextCache.clear(); // 新文档：作废旧页缓存
   if (state.doc) {
     try {
       state.doc.destroy();
@@ -255,6 +259,8 @@ async function renderTextLayer(page, textLayerDiv, viewport, scale, token, wrap)
     .join('');
   const scanned = text.trim() === '';
   wrap.dataset.scanned = String(scanned);
+  // 页文本入缓存：request-page-text（AI 搜索/read_pdf_page）优先命中，避免重复解析
+  pageTextCache.set(Number(wrap.dataset.page), text);
   textLayerDiv.textContent = '';
   const notice = wrap.querySelector('.scanned-notice');
   if (scanned) {
@@ -575,6 +581,27 @@ $('btn-reload').addEventListener('click', () => {
 
 /* ---------------- 与扩展侧通信 ---------------- */
 
+/** 取指定页文本（request-page-text 响应）：优先渲染缓存，未命中现取（限当前文档） */
+async function getPageText(pageNum) {
+  const p = clamp(Math.floor(pageNum == null ? state.currentPage : pageNum), 1, state.numPages || 1);
+  const cached = pageTextCache.get(p);
+  if (cached !== undefined) {
+    return cached;
+  }
+  if (!state.doc) {
+    return '';
+  }
+  try {
+    const page = await state.doc.getPage(p);
+    const tc = await page.getTextContent();
+    const text = tc.items.map((i) => (typeof i.str === 'string' ? i.str : '')).join('');
+    pageTextCache.set(p, text);
+    return text;
+  } catch {
+    return '';
+  }
+}
+
 window.addEventListener('message', (event) => {
   const msg = event.data;
   if (!msg || typeof msg !== 'object') {
@@ -584,6 +611,12 @@ window.addEventListener('message', (event) => {
     void openPdf(msg);
   } else if (msg.type === 'result') {
     showResultPopover(msg);
+  } else if (msg.type === 'request-page-text') {
+    // Task 7：回传当前页（或指定页）文本；page 原样回显（含 undefined），供扩展侧按请求键匹配
+    const requestPage = msg.page;
+    void getPageText(requestPage).then((text) => {
+      vscode.postMessage({ type: 'page-text', page: requestPage, text });
+    });
   }
 });
 
