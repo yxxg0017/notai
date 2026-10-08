@@ -530,6 +530,45 @@ body {
   background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.1));
   border-radius: 10px;
   padding: 3px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.msg-notice .notice-open {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  border-radius: 3px;
+  padding: 1px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* finalize 消息块 footer：[生成为笔记]（仅含 http(s):// 链接的最终帧显示） */
+.msg-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+}
+
+.msg-footer button {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  border-radius: 3px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.msg-footer button:hover,
+.msg-notice .notice-open:hover {
+  background: var(--vscode-list-hoverBackground);
 }
 
 /* 工作区写确认卡 */
@@ -641,6 +680,20 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* 未配置网页搜索提示条（web 工具未注册且当前会话为 research 时显示） */
+.websearch-banner {
+  font-size: 11px;
+  color: var(--vscode-warningForeground, #cca700);
+  background: var(--vscode-editorWarning-background, rgba(204, 167, 0, 0.12));
+  border: 1px solid var(--vscode-charts-orange, rgba(204, 167, 0, 0.45));
+  border-radius: 4px;
+  padding: 4px 10px;
+}
+
+.websearch-banner.hidden {
+  display: none;
 }
 
 .attachment-chips {

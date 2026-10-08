@@ -54,8 +54,11 @@ export function activate(context: vscode.ExtensionContext): void {
     provider,
     config,
     notes,
-    // webSearchKey 为 Task 8 web_search 预留；本任务固定空串
-    getSecrets: async () => ({ apiKey: await secrets.getApiKey(), webSearchKey: '' }),
+    // webSearchKey 接 SecretStore（Task 9 接线；无 Key 时 controller 侧降级为仅本地检索）
+    getSecrets: async () => ({
+      apiKey: await secrets.getApiKey(),
+      webSearchKey: await secrets.getWebSearchKey(),
+    }),
     postToChat: (msg) => harnessSink.post(msg),
     focusChat: () => {
       void vscode.commands.executeCommand('aiStudy.chatPanel.focus');

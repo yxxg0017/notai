@@ -25,6 +25,9 @@ import type {
 import { builtinSkills, defaultSkillIds } from '../core/skills/builtin';
 import { readTools, resolveWithin, ToolError } from '../core/tools/readTools';
 import { noteTools } from '../core/tools/noteTools';
+import { webSearchTool } from '../core/tools/webSearchTool';
+import { TavilyProvider } from '../core/search/tavily';
+import { BochaProvider } from '../core/search/bocha';
 import type { LocalHit, ToolContext, ToolHandler } from '../core/tools/context';
 import { parseFrontmatter } from '../notes/frontmatter';
 import type { NoteService, SourceInfo } from '../notes/noteService';
@@ -544,6 +547,11 @@ export class ChatController {
       return;
     }
     const conv = await this.deps.store.get(conversationId);
+    // 来源回退：未显式传 source 时优先本会话 researchSource（「AI 搜索」划词来源；
+    // 一键笔记优先写入该来源笔记），否则落 Inbox
+    if (!source && conv?.researchSource) {
+      source = conv.researchSource;
+    }
     const sourceInfo = this.sourceInfoFor(source, conv?.title);
     const { notePath, created } = await this.deps.notes.openOrCreate(sourceInfo, {
       headings: [{ heading: '会话摘录', body: content }],
@@ -595,19 +603,21 @@ export class ChatController {
     const sessions: SessionMeta[] = await Promise.all(
       metas.map(async (m) => ({ ...m, model: (await this.deps.store.get(m.id))?.model ?? '' })),
     );
+    const webSearchAvailable = !!(await this.webHandler());
     return {
       type: 'init',
       sessions,
       models: this.deps.config.models,
+      // web 工具未注册时把 search skill 的 defaultOn 置 false（Task 7 评审 minor ⑦）：
+      // 避免 chat 模式默认启用 search skill 却无工具可调用
       skills: builtinSkills.map((s) => ({
         id: s.id,
         displayName: s.displayName,
         description: s.description,
-        defaultOn: s.defaultOn,
+        defaultOn: webSearchAvailable || s.id !== 'search' ? s.defaultOn : false,
         ...(s.icon ? { icon: s.icon } : {}),
       })),
-      // web_search 工具 Task 8 才接入，本任务固定不可用（前端禁用 search chip）
-      webSearchAvailable: false,
+      webSearchAvailable,
       workspaceWriteEnabled:
         this.deps.workspace.enabled && !!this.deps.workspace.cwd && !this.deps.workspace.untrusted,
     };
@@ -669,10 +679,38 @@ export class ChatController {
       case 'openSettings':
         this.openSettings();
         break;
+      case 'openNote': {
+        // 「打开笔记」：文件不存在或读取失败时提示，不抛未捕获异常
+        try {
+          const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(msg.path));
+          await vscode.window.showTextDocument(doc);
+        } catch {
+          void vscode.window.showErrorMessage(`无法打开笔记: ${msg.path}`);
+        }
+        break;
+      }
     }
   }
 
   // ---- 内部 ----
+
+  /**
+   * 网页搜索工具装配：`webSearchProvider === 'none'` 或无 Key 时返回 undefined
+   * （不注册 web_search；research 模式退化为仅本地检索），否则按配置选
+   * Tavily/博查 Provider 并包装为 web_search 工具。
+   */
+  private async webHandler(): Promise<ToolHandler | undefined> {
+    const { webSearchKey } = await this.deps.getSecrets();
+    if (this.deps.config.webSearchProvider === 'none' || !webSearchKey.trim()) {
+      return undefined;
+    }
+    const getKey = (): Promise<string> => Promise.resolve(webSearchKey);
+    const provider =
+      this.deps.config.webSearchProvider === 'bocha'
+        ? new BochaProvider(getKey)
+        : new TavilyProvider(getKey);
+    return webSearchTool(provider);
+  }
 
   /** 驱动一轮 agent 循环：工具装配 → 流式推送 → 落盘 → 收尾消息 */
   private async runTurn(conv: Conversation): Promise<void> {
@@ -696,7 +734,8 @@ export class ChatController {
         tools: buildTools(conv.mode, {
           read: this.readHandlers,
           notes: this.noteHandlers,
-          web: undefined, // Task 8 交付 web_search；research 模式下缺席是预期
+          // web_search 按配置/Key 装配：provider 为 none 或无 Key 时不注册（research 模式仅本地检索）
+          web: await this.webHandler(),
           workspace: [], // Task 10/11 门控点：enableWorkspaceWrite && cwd && !untrusted 时并入
         }),
         ctx: { ...this.toolContext, signal: abort.signal },

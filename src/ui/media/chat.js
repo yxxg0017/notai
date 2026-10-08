@@ -34,6 +34,7 @@
     streaming: false,        // 流式进行中标志（发送按钮变「停止」）
     assistantEl: null,       // 当前流式 assistant 气泡（本轮唯一，防重复插入）
     reasoningEl: null,       // 当前流式推理折叠块
+    lastFullText: '',        // 本轮流式累积的完整原文（finalize 生成为笔记用；勿依赖 store）
     turnSeq: 0,              // 本地轮次序号（流式去重 key 的一部分）
     toolCards: {},           // callId -> {card, statusEl, resultEl}
     pendingAttachments: [],  // 待发送附件队列
@@ -88,6 +89,7 @@
     state.view = v;
     $('session-view').classList.toggle('hidden', v !== 'session');
     $('chat-view').classList.toggle('hidden', v !== 'chat');
+    updateWebSearchBanner();
   }
 
   /* ---------------- 会话列表视图 ---------------- */
@@ -238,8 +240,17 @@
     state.streaming = false;
     state.assistantEl = null;
     state.reasoningEl = null;
+    state.lastFullText = '';
     state.toolCards = {};
     $('send-btn').textContent = '发送';
+  }
+
+  /** 输入区上方提示条：web 搜索不可用且当前会话为 research 时显示「未配置网页搜索，仅本地检索」 */
+  function updateWebSearchBanner() {
+    var banner = $('websearch-banner');
+    if (!banner) return;
+    var show = !state.webSearchAvailable && state.mode === 'research';
+    banner.classList.toggle('hidden', !show);
   }
 
   function scrollBottom() {
@@ -344,10 +355,32 @@
     scrollBottom();
   }
 
-  function addNotice(text) {
+  /** noteSaved 通知：提示 + [打开笔记] 按钮（post openNote 由扩展侧打开文档） */
+  function addNoteSavedNotice(prefix, path) {
     removeEmptyHint();
-    $('messages').appendChild(el('div', 'msg-notice', text));
+    var div = el('div', 'msg-notice');
+    div.appendChild(document.createTextNode(prefix + path));
+    var open = el('button', 'notice-open', '打开笔记');
+    open.addEventListener('click', function () {
+      post({ type: 'openNote', path: path });
+    });
+    div.appendChild(open);
+    $('messages').appendChild(div);
     scrollBottom();
+  }
+
+  /** finalize 消息块 footer：[生成为笔记]——仅当该条消息含 http(s):// 链接时显示 */
+  function maybeAddSaveNoteFooter(container, text) {
+    if (!text || !/https?:\/\//i.test(text)) return;
+    var footer = el('div', 'msg-footer');
+    var btn = el('button', '', '生成为笔记');
+    btn.title = '将该条回复保存为笔记（有来源时写入来源笔记，否则写入 Inbox）';
+    btn.addEventListener('click', function () {
+      if (!state.convId) return;
+      post({ type: 'saveAsNote', conversationId: state.convId, text: text });
+    });
+    footer.appendChild(btn);
+    container.appendChild(footer);
   }
 
   /* ---- 工作区写确认卡 ---- */
@@ -479,6 +512,7 @@
       }
     });
     scrollBottom();
+    updateWebSearchBanner();
   }
 
   /* ---- 会话列表缓存维护 ---- */
@@ -558,6 +592,7 @@
         renderSessions();
         populateModelSelect();
         renderSkillChips();
+        updateWebSearchBanner();
         break;
 
       case 'conversation':
@@ -579,6 +614,8 @@
           if (!state.assistantEl) state.assistantEl = addAssistantStreaming();
           var span = state.assistantEl.querySelector('.stream-text');
           if (span) span.appendChild(document.createTextNode(d.text || ''));
+          /* 累积完整原文：finalize 时作为 [生成为笔记] 的 text（save 在 finalize 之后，勿依赖 store） */
+          state.lastFullText += d.text || '';
           scrollBottom();
         } else if (d.type === 'reasoning') {
           if (!state.reasoningEl) state.reasoningEl = addReasoningBlock();
@@ -596,6 +633,8 @@
           state.assistantEl.classList.remove('streaming');
           state.assistantEl.setAttribute('data-mid', data.messageId || '');
           state.assistantEl.innerHTML = data.html || '';
+          /* 含来源链接的最终帧：追加 [生成为笔记]（text 用流式累积的完整原文） */
+          maybeAddSaveNoteFooter(state.assistantEl, state.lastFullText);
           state.assistantEl = null;
         }
         clearStreaming();
@@ -624,7 +663,7 @@
         break;
 
       case 'noteSaved':
-        addNotice((data.created ? '笔记已创建: ' : '笔记已追加: ') + data.path);
+        addNoteSavedNotice(data.created ? '笔记已创建: ' : '笔记已追加: ', data.path);
         break;
 
       case 'pageText':
@@ -693,6 +732,7 @@
         post({ type: 'setMode', conversationId: state.convId, mode: mode });
         state.activeSkills = defaultSkillIds(mode);
         renderSkillChips();
+        updateWebSearchBanner();
       });
     }
 
