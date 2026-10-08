@@ -13,6 +13,7 @@ import { LocalHit, ToolContext, ToolError, ToolHandler } from './context';
 export { ToolError };
 
 const DEFAULT_READ_MAX_BYTES = 16384;
+const DEFAULT_HIT_LIMIT = 5;
 
 /**
  * 路径白名单（纯函数）：p 相对 root 解析，规范化后必须等于 root
@@ -46,6 +47,17 @@ function asNum(args: Record<string, unknown>, key: string): number | undefined {
   return typeof v === 'number' ? v : undefined;
 }
 
+/** 数值参数钳制：非有限数值或 <=0 回落 fallback（避免 0/负数导致空读取或异常切片） */
+function positiveInt(v: number | undefined, fallback: number): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? Math.floor(v) : NaN;
+  return n >= 1 ? n : fallback;
+}
+
+/** 将 ctx 回调异常包装为 ToolError（保留原错误信息），避免原生 Error 直接冒泡中断循环 */
+function wrapErr(prefix: string, err: unknown): ToolError {
+  return new ToolError(`${prefix}: ${err instanceof Error ? err.message : String(err)}`);
+}
+
 /** read_file：resolveWithin 校验 → realpath 二次校验（防符号链接逃逸）→ 读文件 → 超限按字节截断 */
 async function execReadFile(args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
   const rel = asStr(args, 'path');
@@ -58,17 +70,29 @@ async function execReadFile(args: Record<string, unknown>, ctx: ToolContext): Pr
   if (!abs) {
     throw new ToolError(`路径越界: ${rel}`);
   }
-  // 真实路径二次校验（防符号链接逃逸）：root 与文件路径都经 realpath 解析后
-  // 再比较边界（处理 macOS /var → /private/var 这类 tmpdir 符号链接场景）
+  // 真实路径二次校验（防符号链接逃逸）：root 与目标都经 realpath 解析后再比较边界
+  // （处理 macOS /var → /private/var 这类 tmpdir 符号链接场景）。
+  // realpath 失败需区分：ENOENT = 目标不存在（非逃逸）→ 置空，交由下方 readFile
+  // 统一报「文件不存在或不可读」；其他错误（如 ELOOP）才按符号链接逃逸处理。
   const realRoot = await fs.promises.realpath(absRoot).catch(() => absRoot);
-  const real = await fs.promises.realpath(abs).catch(() => undefined);
-  if (!real || !(real === realRoot || real.startsWith(realRoot + path.sep))) {
+  let real: string | undefined;
+  try {
+    real = await fs.promises.realpath(abs);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      real = undefined; // 目标不存在，非逃逸
+    } else {
+      throw new ToolError(`路径越界（符号链接逃逸）: ${rel}`);
+    }
+  }
+  if (real !== undefined && !(real === realRoot || real.startsWith(realRoot + path.sep))) {
     throw new ToolError(`路径越界（符号链接逃逸）: ${rel}`);
   }
-  const buf = await fs.promises.readFile(real).catch(() => {
+  const buf = await fs.promises.readFile(real ?? abs).catch(() => {
     throw new ToolError(`文件不存在或不可读: ${rel}`);
   });
-  const maxBytes = asNum(args, 'maxBytes') ?? DEFAULT_READ_MAX_BYTES;
+  // maxBytes 钳制为正整数：非有限数值或 <=0 回落默认 16384（避免 0/负数导致空读取）
+  const maxBytes = positiveInt(asNum(args, 'maxBytes'), DEFAULT_READ_MAX_BYTES);
   if (buf.length > maxBytes) {
     const head = buf.subarray(0, maxBytes).toString('utf8');
     return `${head}\n[已截断，共 ${buf.length} 字节]`;
@@ -82,8 +106,11 @@ async function execSearchLocal(args: Record<string, unknown>, ctx: ToolContext):
   if (!query) {
     throw new ToolError('search_local 缺少 query 参数');
   }
-  const limit = asNum(args, 'limit');
-  const hits = await ctx.searchLocal(query, limit);
+  // limit 钳制为正整数：非有限数值或 <=0 回落默认 5（避免 0/负数导致异常切片）
+  const limit = positiveInt(asNum(args, 'limit'), DEFAULT_HIT_LIMIT);
+  const hits = await ctx.searchLocal(query, limit).catch((err: unknown) => {
+    throw wrapErr('search_local 失败', err);
+  });
   if (!hits || hits.length === 0) {
     return '（无匹配）';
   }
@@ -96,7 +123,9 @@ async function execReadPdfPage(args: Record<string, unknown>, ctx: ToolContext):
     return '（当前无打开或可读的 PDF 页）';
   }
   const page = asNum(args, 'page');
-  const text = await ctx.readPdfPage(page);
+  const text = await ctx.readPdfPage(page).catch((err: unknown) => {
+    throw wrapErr('read_pdf_page 失败', err);
+  });
   if (!text) {
     return '（当前无打开或可读的 PDF 页）';
   }
@@ -105,7 +134,9 @@ async function execReadPdfPage(args: Record<string, unknown>, ctx: ToolContext):
 
 /** list_notes：笔记库清单，`标题 (路径)` 逐行，无笔记返回占位文案 */
 async function execListNotes(_args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
-  const notes = await ctx.listNotes();
+  const notes = await ctx.listNotes().catch((err: unknown) => {
+    throw wrapErr('list_notes 失败', err);
+  });
   if (!notes || notes.length === 0) {
     return '（暂无笔记）';
   }
