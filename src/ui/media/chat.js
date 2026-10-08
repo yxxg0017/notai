@@ -588,14 +588,13 @@
 
       case 'finalize':
         if (data.conversationId !== state.convId) break;
-        if (state.streamingEl) {
+        if (state.assistantEl) {
           /* finalize.html 为扩展侧渲染好的 markdown HTML，直接整体替换（信任扩展侧） */
-          state.streamingEl.classList.remove('streaming');
-          state.streamingEl.setAttribute('data-mid', data.messageId || '');
-          state.streamingEl.innerHTML = data.html || '';
-          state.streamingEl = null;
+          state.assistantEl.classList.remove('streaming');
+          state.assistantEl.setAttribute('data-mid', data.messageId || '');
+          state.assistantEl.innerHTML = data.html || '';
+          state.assistantEl = null;
         }
-        state.reasoningEl = null;
         clearStreaming();
         scrollBottom();
         break;
@@ -727,7 +726,10 @@
     switchView(state.view);
     bindEvents();
     /* init 由扩展侧在 webview 加载后主动推送，前端只处理渲染；ready 保留协议不强求发送 */
-    window.addEventListener('message', onMessage);
+    window.addEventListener('message', function (event) {
+      var msg = event.data;
+      if (msg && typeof msg === 'object') onMessage(msg);
+    });
   }
 
   if (document.readyState === 'loading') {
