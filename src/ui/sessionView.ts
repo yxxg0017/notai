@@ -3,7 +3,7 @@
  *
  * 职责：
  * - createSessionView：注册 webview view，装配与 chat 视图同一份
- *   `src/ui/media/chat.html`（`__NOTA_VIEW__='session'`），转发 UiIn 到
+ *   `out/ui/media/chat.html`（`__NOTA_VIEW__='session'`），转发 UiIn 到
  *   controller.handleUiIn；视图重新可见时重推 init 刷新会话列表
  *   （重命名/删除/新建可能发生在 chat 视图侧，session 视图需与 store 对齐）。
  * - createHarnessViews：装配入口——注册 session + chat 两个 view，

@@ -226,7 +226,8 @@
   },
   "scripts": {
     "copy-pdf-assets": "node scripts/copy-pdf-assets.js",
-    "compile": "npm run copy-pdf-assets && tsc -p tsconfig.json",
+    "copy-chat-assets": "node scripts/copy-chat-assets.js",
+    "compile": "npm run copy-pdf-assets && npm run copy-chat-assets && tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.test.json && node --test out-test/test/",
     "check": "npm run compile && npm test",
     "package": "npm run compile && npx vsce package --no-dependencies"

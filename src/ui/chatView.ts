@@ -4,7 +4,7 @@
  * 职责：
  * - HarnessSink：controller 的 postToChat 落点。chat 视图未 resolve 时缓冲
  *   UiOut（防「划词联动建会话」先于视图创建导致流式增量丢失），resolve 后按序 flush。
- * - createChatView：注册 webview view，装配 `src/ui/media/chat.html`（CSS/JS 换
+ * - createChatView：注册 webview view，装配 `out/ui/media/chat.html`（CSS/JS 换
  *   asWebviewUri 资源路径、注入 CSP 与 `__NOTA_VIEW__='chat'` 视图标识），
  *   转发 UiIn 到 controller.handleUiIn，加载完成后主动推送 init（Task 6 评审）。
  */
@@ -16,8 +16,12 @@ import type { UiIn, UiOut } from './protocol';
 /** 视图标识（与 src/ui/media/chat.js 的 boot 读取约定一致） */
 export type HarnessView = 'session' | 'chat';
 
-/** 静态资源根目录（相对扩展根；与 package.json 装配的 view 共用 chat.html） */
-export const HARNESS_MEDIA_DIR = ['src', 'ui', 'media'];
+/**
+ * 静态资源根目录（相对扩展根；与 package.json 装配的 view 共用 chat.html）。
+ * 指向 out/ui/media：.vscodeignore 排除 src/**（vsix 不含源码），编译期由
+ * scripts/copy-chat-assets.js 把 src/ui/media/ 复制到 out/ui/media/ 以便随 vsix 打包。
+ */
+export const HARNESS_MEDIA_DIR = ['out', 'ui', 'media'];
 
 /**
  * UiOut 消息桥：controller 的 postToChat 落点。
@@ -83,7 +87,7 @@ function getNonce(): string {
 }
 
 /**
- * 读取 `src/ui/media/chat.html` 并做 webview 装配：
+ * 读取 `out/ui/media/chat.html` 并做 webview 装配：
  * - CSS/JS 换成 webview.asWebviewUri 资源路径
  * - 注入 CSP（参照 pdfEditor.ts getHtml 模式：仅放行本地资源）
  * - 注入 `<script nonce>window.__NOTA_VIEW__='<view>'</script>`（chat.js boot 读取视图标识）
