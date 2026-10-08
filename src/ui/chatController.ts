@@ -44,7 +44,7 @@ export interface ChatControllerDeps {
   provider: LLMProvider;
   config: AppConfig;
   notes: NoteService;
-  /** API Key 读取（webSearchKey 为 Task 8 web_search 预留） */
+  /** API Key 读取（apiKey + webSearchKey 均已接 SecretStore 真值；webSearchKey 供 web_search 工具装配） */
   getSecrets: () => Promise<{ apiKey: string; webSearchKey: string }>;
   /** 推送 UiOut 到 Harness 视图：init 由 Sink 多播到 session+chat（会话列表即时刷新）；
    *  其余消息仅投 chat 视图（未 resolve 时由 Sink 缓冲） */
@@ -339,7 +339,8 @@ export class ChatController {
       mode,
       model: model || this.deps.config.model,
       provider: this.deps.provider.name,
-      skillIds: skillIds && skillIds.length > 0 ? [...skillIds] : defaultSkillIds(mode),
+      // 无参兜底走 web 可用性感知的默认值（web 不可用时剔除 search，与前端 defaultOn 对齐）
+      skillIds: skillIds && skillIds.length > 0 ? [...skillIds] : await this.defaultSkillsFor(mode),
       messages: [],
       createdAt: now,
       updatedAt: now,
@@ -385,8 +386,9 @@ export class ChatController {
       return;
     }
     conv.mode = mode;
-    // 与前端 defaultSkillIds(mode) 对齐：切模式后重置会话 skills，避免状态漂移（Task 6 评审）
-    conv.skillIds = defaultSkillIds(mode);
+    // 与前端 defaultSkillIds(mode) 对齐：切模式后重置会话 skills，避免状态漂移（Task 6 评审）；
+    // 默认值走 web 可用性感知（web 不可用时剔除 search，避免「启用但未注册」）
+    conv.skillIds = await this.defaultSkillsFor(mode);
     conv.updatedAt = Date.now();
     await this.deps.store.save(conv);
     await this.refreshSessions();
@@ -710,6 +712,20 @@ export class ChatController {
         ? new BochaProvider(getKey)
         : new TavilyProvider(getKey);
     return webSearchTool(provider);
+  }
+
+  /**
+   * 默认 Skill id 列表（web 可用性感知）：`defaultSkillIds(mode)` 的结果在 web 搜索
+   * 不可用（provider=none 或无 Key）时剔除 'search'，避免「skill 启用但 web_search
+   * 未注册」——模型尝试调用未注册工具（Task 9 评审：minor ⑦ 只闭环一半）。
+   * 有 Key 时行为与 defaultSkillIds 一致（research 默认含 search）。
+   */
+  private async defaultSkillsFor(mode: ConversationMode): Promise<string[]> {
+    const ids = defaultSkillIds(mode);
+    if (await this.webHandler()) {
+      return ids;
+    }
+    return ids.filter((id) => id !== 'search');
   }
 
   /** 驱动一轮 agent 循环：工具装配 → 流式推送 → 落盘 → 收尾消息 */

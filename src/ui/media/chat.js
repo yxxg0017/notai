@@ -221,7 +221,10 @@
       chip.title = s.description || '';
       chip.textContent = (s.icon ? s.icon + ' ' : '') + s.displayName;
       if (!state.webSearchAvailable && s.id === 'search') {
-        chip.disabled = true;
+        var searchEnabled = state.activeSkills.indexOf(s.id) >= 0;
+        /* web 不可用时禁止开启（disabled），但已启用的允许点击关闭——
+         * 避免「store 启用但工具未注册」后回显 active+disabled 且无法移除 */
+        if (!searchEnabled) chip.disabled = true;
         chip.title = (s.description || '') + '（web_search 不可用）';
       }
       chip.addEventListener('click', function () {

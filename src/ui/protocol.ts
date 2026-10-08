@@ -42,7 +42,7 @@ export type UiIn =
   | { type: 'retry'; conversationId: string }
   | { type: 'requestPageText' }
   | { type: 'pickAttachment' }
-  // openNote：Task 9 接线（本任务控制器未处理该消息，前端亦未发送；协议字段先声明）
+  // openNote：Task 9 已接线（controller 打开笔记、前端 noteSaved 的 [打开笔记] 按钮发送）
   | { type: 'openNote'; path: string };
 
 /** 扩展侧 → webview 的消息 */
