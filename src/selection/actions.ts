@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 import { LLMError } from '../core/llm/types';
 import type { LLMProvider } from '../core/llm/types';
 import type { AppConfig } from '../config';
-import { requireSelection, buildTranslatePrompt, buildExplainPrompt } from './prompts';
+import { requireSelection, buildTranslatePrompt, buildExplainPrompt, parseTranslateResult } from './prompts';
 import { renderSimpleMarkdown } from '../util/markdown';
 import { NoteService } from '../notes/noteService';
 import type { SourceInfo } from '../notes/noteService';
@@ -117,17 +117,17 @@ export class SelectionActions {
   }
 
   /**
-   * 加单词本：有本次 AI 输出时整段写入（译文 + 术语表，不再询问）；
+   * 加单词本：有本次 AI 输出时按固定格式正则提取「译文：」行写入（不再询问）；
    * 无输出时提示输入翻译（允许留空，取消则中止）
    * → 追加到全局唯一单词本（word = 文本首词，整段截断 50 字；source = 来源名；date = 今日）→ 提示。
    *
-   * @param content 本次动作的原始 LLM 输出（整段作为翻译字段；0.3 修复：此前只有原文没 AI 输出）
+   * @param content 本次动作的原始 LLM 输出（parseTranslateResult 提取译文；0.3 修复：此前只有原文没 AI 输出）
    * @returns true = 已加入单词本；false = 用户取消翻译输入
    */
   async addToWordBook(text: string, source: SourceInfo, content?: string): Promise<boolean> {
     let translation = '';
     if (content && content.trim()) {
-      translation = content.trim();
+      translation = parseTranslateResult(content).translation;
     } else {
       const input = await vscode.window.showInputBox({ prompt: '翻译', value: '' });
       if (input === undefined) {
