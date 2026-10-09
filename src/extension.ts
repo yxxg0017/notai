@@ -152,8 +152,9 @@ export function activate(context: vscode.ExtensionContext): void {
       );
     }
   };
-  pdfProvider.setNoteActionHandler((action, selection) => {
-    void runNoteAction(action, selection);
+  pdfProvider.setNoteActionHandler((action, selection, content) => {
+    // 修复：此前遗漏 content 透传，导致加单词本/加笔记永远走「无 AI 输出」兜底
+    void runNoteAction(action, selection, content);
   });
 
   /** PDF 浮动工具栏动作入口：设置渲染上下文后执行对应动作 */
