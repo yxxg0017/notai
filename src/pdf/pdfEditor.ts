@@ -248,12 +248,11 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
     });
 
     // ---- 5. 先注册 ready 监听，再设置 HTML，避免 viewer 初始化很快时丢失消息 ----
-    let opened = false;
+    // ready 在每次 webview 重建后都会重新发出（retainContextWhenHidden 缺省 false：
+    // 面板隐藏时上下文被销毁，切回时重建）：每次 ready 都重发 pdf:open，
+    // 否则切走再切回后 viewer 收不到文档、界面空白（0.3 修复）。
+    let readyReceived = false;
     const sendOpen = (): void => {
-      if (opened) {
-        return;
-      }
-      opened = true;
       const message: PdfOpenMessage = {
         type: 'pdf:open',
         uri: uri.toString(),
@@ -269,15 +268,19 @@ export class PdfEditorProvider implements vscode.CustomTextEditorProvider {
         return;
       }
       this.trace(`ready panel#${panelId}`);
-      readyDisposable.dispose();
+      readyReceived = true;
       sendOpen();
     });
     panel.onDidDispose(() => readyDisposable.dispose());
 
     panel.webview.html = this.getHtml(panel.webview);
 
-    // 兜底：某些场景监听器建立后 ready 已发出，定时补发一次（opened 守卫保证只发一次）
-    const fallback = setTimeout(sendOpen, 1500);
+    // 兜底：某些场景监听器建立后 ready 已发出，定时补发一次（仅当 ready 尚未到达，避免双开）
+    const fallback = setTimeout(() => {
+      if (!readyReceived) {
+        sendOpen();
+      }
+    }, 1500);
     panel.onDidDispose(() => clearTimeout(fallback));
   }
 

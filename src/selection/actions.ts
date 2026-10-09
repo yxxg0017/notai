@@ -242,11 +242,12 @@ function firstToken(text: string, max: number): string {
 
 /**
  * 从翻译结果原文提取「译文：…」行内容（加单词本预填用）。
- * 兼容 `**译文：** xxx`（markdown 源）与 `译文：xxx` 两种形态；提取失败回退整段。
+ * 兼容 `**译文：** xxx`（markdown 加粗）、`**译文**：xxx`、`译文：xxx` 三种形态；
+ * 提取失败回退空串（让用户手输，避免把整段结果塞进翻译字段）。
  */
 function extractTranslation(raw: string): string {
-  const m = String(raw ?? '').match(/译文\s*[：:]\s*([^\n*]+)/);
-  return m ? m[1].trim() : String(raw ?? '').trim();
+  const m = String(raw ?? '').match(/译文\s*\*{0,2}\s*[：:]\s*\*{0,2}\s*([^\n]+)/);
+  return m ? m[1].trim() : '';
 }
 
 /** 今日本地日期字符串（YYYY-MM-DD；用本地时区而非 toISOString 的 UTC） */
