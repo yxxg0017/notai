@@ -14,8 +14,7 @@ export function requireSelection(text: string | undefined): string {
 }
 
 /**
- * 翻译提示词：强制「译文 + 术语表」固定双段格式（0.3 规范输出格式，
- * 前端 parseTranslateResult 按此格式正则提取；禁止模型自行发挥格式）。
+ * 翻译提示词：要求输出「译文 + 术语表」结构（固定格式便于阅读；加单词本整段原样写入，不依赖解析）。
  */
 export function buildTranslatePrompt(text: string): { system: string; user: string } {
   return {
@@ -28,39 +27,6 @@ export function buildTranslatePrompt(text: string): { system: string; user: stri
       '若没有需要解释的术语，「术语表：」后不输出任何行。',
     user: `翻译：${text}`,
   };
-}
-
-/** 翻译结果解析：按固定格式「译文：…」+「术语表：…」正则提取（纯函数，供 node:test 测试） */
-export interface TranslateResult {
-  /** 「译文：」行内容（无该行时回退整段原文，保证非空） */
-  translation: string;
-  /** 术语表段落（「术语表：」标题之后的行，原样拼接；无则空串） */
-  glossary: string;
-}
-
-export function parseTranslateResult(raw: string): TranslateResult {
-  const text = String(raw ?? '').trim();
-  let translation = '';
-  let glossary = '';
-  let inGlossary = false;
-  for (const line of text.split(/\r?\n/)) {
-    // 归一化：去首部列表/加粗装饰（`- `、`**`）与尾部 `**`，兼容模型未遵守固定格式的变体
-    const t = line.trim().replace(/^[-*]+\s*/, '').replace(/\s*\*+$/, '');
-    const tm = t.match(/^译文\s*\**\s*[：:]\s*\**\s*(.*)$/);
-    const gm = t.match(/^术语表\s*\**\s*[：:]\s*\**\s*$/);
-    if (tm) {
-      translation += (translation ? '\n' : '') + tm[1].trim();
-      continue;
-    }
-    if (gm) {
-      inGlossary = true;
-      continue;
-    }
-    if (inGlossary && t) {
-      glossary += (glossary ? '\n' : '') + t;
-    }
-  }
-  return { translation: translation || text, glossary };
 }
 
 /** 解释提示词：要求「先结论、再分点、最后例子」的导师式结构 */

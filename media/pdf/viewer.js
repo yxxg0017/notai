@@ -486,16 +486,17 @@ floatToolbar.addEventListener('click', (e) => {
   const text = state.selectionText || (window.getSelection() ? window.getSelection().toString() : '');
   const page = state.selectionPage || state.currentPage;
   // 加笔记/加单词本（Task 6 接线）：走 note-action 通道，由扩展侧调用 SelectionActions
-  // 悬浮工具栏早于翻译结果出现：若当前选区与最近一次结果同源，附带结果原文
-  // （0.3 修复：此前该路径不带 AI 输出，加出来的只有原文）
+  // 悬浮工具栏早于翻译结果出现：若当前选区与最近一次结果同源（trim 后比较，
+  // 兼容 PDF 选区首尾空白差异），附带结果原文（0.3 修复：此前该路径不带 AI 输出）
   if (action === 'note' || action === 'wordbook') {
     const ctx = state.resultCtx;
+    const sameSel = ctx && text.trim() === (ctx.text || '').trim();
     vscode.postMessage({
       type: 'note-action',
       action,
       text,
       page,
-      content: ctx && ctx.text === text ? ctx.content : undefined,
+      content: sameSel ? ctx.content : undefined,
     });
     return;
   }
