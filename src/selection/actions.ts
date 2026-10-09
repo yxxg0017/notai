@@ -117,23 +117,27 @@ export class SelectionActions {
   }
 
   /**
-   * 加单词本：输入翻译（预填本次翻译结果的「译文」行，可编辑，取消则中止）
+   * 加单词本：有本次 AI 输出时整段写入（译文 + 术语表，不再询问）；
+   * 无输出时提示输入翻译（允许留空，取消则中止）
    * → 追加到全局唯一单词本（word = 文本首词，整段截断 50 字；source = 来源名；date = 今日）→ 提示。
    *
-   * @param content 本次动作的原始 LLM 输出（提取「译文」行预填；0.3 修复：此前只能加单词没翻译）
+   * @param content 本次动作的原始 LLM 输出（整段作为翻译字段；0.3 修复：此前只有原文没 AI 输出）
    * @returns true = 已加入单词本；false = 用户取消翻译输入
    */
   async addToWordBook(text: string, source: SourceInfo, content?: string): Promise<boolean> {
-    const translation = await vscode.window.showInputBox({
-      prompt: '翻译',
-      value: content ? extractTranslation(content) : '',
-    });
-    if (translation === undefined) {
-      return false; // 用户取消
+    let translation = '';
+    if (content && content.trim()) {
+      translation = content.trim();
+    } else {
+      const input = await vscode.window.showInputBox({ prompt: '翻译', value: '' });
+      if (input === undefined) {
+        return false; // 用户取消
+      }
+      translation = input.trim();
     }
     await this.deps.wordBook.addEntry({
       word: firstToken(text, 50),
-      translation: translation.trim(),
+      translation,
       source: source.displayName,
       date: localDateString(),
     });
@@ -238,16 +242,6 @@ export class SelectionActions {
 /** 文本首词（空白分隔第一段），超长截断到 max 字符（单词本词条用） */
 function firstToken(text: string, max: number): string {
   return (text.trim().split(/\s+/)[0] ?? '').slice(0, max);
-}
-
-/**
- * 从翻译结果原文提取「译文：…」行内容（加单词本预填用）。
- * 兼容 `**译文：** xxx`（markdown 加粗）、`**译文**：xxx`、`译文：xxx` 三种形态；
- * 提取失败回退空串（让用户手输，避免把整段结果塞进翻译字段）。
- */
-function extractTranslation(raw: string): string {
-  const m = String(raw ?? '').match(/译文\s*\*{0,2}\s*[：:]\s*\*{0,2}\s*([^\n]+)/);
-  return m ? m[1].trim() : '';
 }
 
 /** 今日本地日期字符串（YYYY-MM-DD；用本地时区而非 toISOString 的 UTC） */

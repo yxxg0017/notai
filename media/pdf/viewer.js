@@ -78,7 +78,7 @@ const state = {
   selectionText: '',
   /** 错误卡「重试」所需上下文（{ action, text, page }；null 表示无） */
   retryCtx: null,
-  /** 当前 popover 结果的来源选区（{ text, page }；「加笔记/加单词本」按钮使用；null 表示无） */
+  /** 最近一次结果的来源选区（{ text, page, content }；「加笔记/加单词本」按钮使用；null 表示无） */
   resultCtx: null,
 };
 
@@ -486,8 +486,17 @@ floatToolbar.addEventListener('click', (e) => {
   const text = state.selectionText || (window.getSelection() ? window.getSelection().toString() : '');
   const page = state.selectionPage || state.currentPage;
   // 加笔记/加单词本（Task 6 接线）：走 note-action 通道，由扩展侧调用 SelectionActions
+  // 悬浮工具栏早于翻译结果出现：若当前选区与最近一次结果同源，附带结果原文
+  // （0.3 修复：此前该路径不带 AI 输出，加出来的只有原文）
   if (action === 'note' || action === 'wordbook') {
-    vscode.postMessage({ type: 'note-action', action, text, page });
+    const ctx = state.resultCtx;
+    vscode.postMessage({
+      type: 'note-action',
+      action,
+      text,
+      page,
+      content: ctx && ctx.text === text ? ctx.content : undefined,
+    });
     return;
   }
   // 真实动作由 Task 5 在扩展侧接线；本任务只发出消息
@@ -531,7 +540,8 @@ function showResultPopover(msg) {
 function hideResultPopover() {
   resultPopover.hidden = true;
   state.retryCtx = null;
-  state.resultCtx = null;
+  // resultCtx 保留为「最近一次结果」：关闭 popover 后悬浮工具栏的
+  // 加笔记/加单词本 仍可携带该次 AI 输出（下次结果到达时覆盖）
 }
 
 resultCloseBtn.addEventListener('click', hideResultPopover);
